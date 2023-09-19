@@ -65,14 +65,20 @@ void overlay::Window::build() {
         if (!cfg::CONFIGURATOR_STANDALONE && (size_max.x < 0 || size_max.y < 0)) {
             auto &display_size = ImGui::GetIO().DisplaySize;
             ImVec2 size_max_auto(display_size.x - 100, display_size.y - 100);
-            ImGui::SetNextWindowSizeConstraints(size_min, size_max_auto);
+            ImGui::SetNextWindowSizeConstraints(size_min, size_max_auto, resize_callback);
         } else {
-            ImGui::SetNextWindowSizeConstraints(size_min, size_max);
+            ImGui::SetNextWindowSizeConstraints(size_min, size_max, resize_callback);
         }
 
         // background alpha
         if (this->bg_alpha != 1.f) {
             ImGui::SetNextWindowBgAlpha(this->bg_alpha);
+        }
+
+        if (this->remove_window_padding) {
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
         }
 
         // create window
@@ -82,7 +88,8 @@ void overlay::Window::build() {
                 this->flags)) {
 
             // window attributes
-            ImGui::SetWindowPos(this->initial_pos(), ImGuiCond_Once);
+            this->calculate_initial_window();
+            ImGui::SetWindowPos(this->init_pos, ImGuiCond_Once);
             ImGui::SetWindowSize(this->init_size, ImGuiCond_Once);
 
             // add content
@@ -96,6 +103,13 @@ void overlay::Window::build() {
             // end window
             ImGui::End();
         }
+
+        if (this->remove_window_padding) {
+            ImGui::PopStyleVar();
+            ImGui::PopStyleVar();
+            ImGui::PopStyleVar();
+        }
+
     } else {
 
         // add raw content

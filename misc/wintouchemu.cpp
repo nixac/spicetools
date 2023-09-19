@@ -15,10 +15,19 @@
 #include "util/time.h"
 #include "util/utils.h"
 
+#include "avs/game.h"
+
 namespace wintouchemu {
+
+    typedef struct {
+        POINT pos;
+        bool last_button_pressed;
+        DWORD touch_event;
+    } mouse_state_t;
 
     // settings
     bool FORCE = false;
+    bool INJECT_MOUSE_AS_WM_TOUCH = false;
     bool LOG_FPS = false;
 
     static inline bool is_emu_enabled() {
@@ -67,6 +76,7 @@ namespace wintouchemu {
     std::string WINDOW_TITLE_START = "";
     std::optional<std::string> WINDOW_TITLE_END = std::nullopt;
     bool INITIALIZED = false;
+    mouse_state_t mouse_state;
 
     void hook(const char *window_title, HMODULE module) {
 
@@ -106,7 +116,6 @@ namespace wintouchemu {
         // set touch inputs
         bool result = false;
         bool mouse_used = false;
-        static bool mouse_state_old = false;
         for (UINT input = 0; input < cInputs; input++) {
             auto *touch_input = &pInputs[input];
 
@@ -130,22 +139,34 @@ namespace wintouchemu {
 
             // check touch point
             if (touch_event) {
-
                 // set touch point
                 result = true;
-                touch_input->x = touch_event->x * 100;
-                touch_input->y = touch_event->y * 100;
+
+                auto x = touch_event->x;
+                auto y = touch_event->y;
+                auto valid = true;
+                if (overlay::OVERLAY) {
+                    valid = overlay::OVERLAY->transform_touch_point(&x, &y);
+                }
+
+                touch_input->x = x * 100;
+                touch_input->y = y * 100;
                 touch_input->hSource = hTouchInput;
                 touch_input->dwID = touch_event->id;
                 touch_input->dwFlags = 0;
                 switch (touch_event->type) {
                     case TOUCH_DOWN:
-                        touch_input->dwFlags |= TOUCHEVENTF_DOWN;
+                        if (valid) {
+                            touch_input->dwFlags |= TOUCHEVENTF_DOWN;
+                        }
                         break;
                     case TOUCH_MOVE:
-                        touch_input->dwFlags |= TOUCHEVENTF_MOVE;
+                        if (valid) {
+                            touch_input->dwFlags |= TOUCHEVENTF_MOVE;
+                        }
                         break;
                     case TOUCH_UP:
+                        // don't check valid so that this touch ID can be released
                         touch_input->dwFlags |= TOUCHEVENTF_UP;
                         break;
                 }
@@ -160,39 +181,47 @@ namespace wintouchemu {
                 // disable further mouse inputs this call
                 mouse_used = true;
 
-                // get mouse state
-                bool mouse_state = (GetKeyState(VK_LBUTTON) & 0x100) != 0;
-
-                // check event needs to be generated
-                if (mouse_state || mouse_state_old) {
-
-                    // get current cursor position
-                    POINT cursorPos {};
-                    GetCursorPos(&cursorPos);
-
-                    // set touch input to mouse
+                if (mouse_state.touch_event) {
                     result = true;
-                    touch_input->x = cursorPos.x * 100;
-                    touch_input->y = cursorPos.y * 100;
+                    touch_input->x = mouse_state.pos.x;
+                    touch_input->y = mouse_state.pos.y;
+                    auto valid = true;
+                    if (overlay::OVERLAY) {
+                        valid = overlay::OVERLAY->transform_touch_point(
+                            &touch_input->x, &touch_input->y);
+                    }
+
+                    // touch inputs require 100x precision per pixel
+                    touch_input->x *= 100;
+                    touch_input->y *= 100;
                     touch_input->hSource = hTouchInput;
                     touch_input->dwID = 0;
                     touch_input->dwFlags = 0;
-                    if (mouse_state && !mouse_state_old) {
-                        touch_input->dwFlags |= TOUCHEVENTF_DOWN;
-                    } else if (mouse_state && mouse_state_old) {
-                        touch_input->dwFlags |= TOUCHEVENTF_MOVE;
-                    } else if (!mouse_state && mouse_state_old) {
-                        touch_input->dwFlags |= TOUCHEVENTF_UP;
+                    switch (mouse_state.touch_event) {
+                        case TOUCHEVENTF_DOWN:
+                            if (valid) {
+                                touch_input->dwFlags |= TOUCHEVENTF_DOWN;
+                            }
+                            break;
+                        case TOUCHEVENTF_MOVE:
+                            if (valid) {
+                                touch_input->dwFlags |= TOUCHEVENTF_MOVE;
+                            }
+                            break;
+                        case TOUCHEVENTF_UP:
+                            // don't check valid so that this touch ID can be released
+                            touch_input->dwFlags |= TOUCHEVENTF_UP;
+                            break;
                     }
                     touch_input->dwMask = 0;
                     touch_input->dwTime = 0;
                     touch_input->dwExtraInfo = 0;
                     touch_input->cxContact = 0;
                     touch_input->cyContact = 0;
-                }
 
-                // save old state
-                mouse_state_old = mouse_state;
+                    // reset it since the event was consumed & propagated as touch
+                    mouse_state.touch_event = 0;
+                }
             } else {
 
                 /*
@@ -314,12 +343,18 @@ namespace wintouchemu {
                 // create touch window - create overlay if not yet existing at this point
                 touch_create_wnd(hWnd, overlay::ENABLED && !overlay::OVERLAY);
                 USE_MOUSE = false;
+            } else if (INJECT_MOUSE_AS_WM_TOUCH) {
+                log_info(
+                    "wintouchemu",
+                    "using raw mouse cursor API in full screen and injecting them as WM_TOUCH events");
+                USE_MOUSE = true;
+
             } else {
                 log_info("wintouchemu", "activating DirectX hooks");
 
                 // mouse position based input only
                 touch_attach_dx_hook();
-                USE_MOUSE = true;
+                USE_MOUSE = false;
             }
 
             // hooks
@@ -343,9 +378,6 @@ namespace wintouchemu {
 
             // get event count
             auto event_count = TOUCH_EVENTS.size();
-            if (USE_MOUSE) {
-                event_count++;
-            }
 
             // for the fake move events
             event_count += MAX(0, (int) (TOUCH_POINTS.size() - TOUCH_EVENTS.size()));
@@ -372,5 +404,31 @@ namespace wintouchemu {
                 }
             }
         }
+
+        // send separate WM_TOUCH event for mouse
+        // this must be separate from actual touch events because some games will ignore the return
+        // value from GetTouchInputInfo or fail to read dwFlags for valid events, so it's not OK to
+        // send empty events when the mouse button is not clicked/released
+        if (hWnd != nullptr && USE_MOUSE) {
+            bool button_pressed = ((GetKeyState(VK_LBUTTON) & 0x100) != 0);
+
+            // figure out what kind of touch event to simulate
+            if (button_pressed && !mouse_state.last_button_pressed) {
+                mouse_state.touch_event = TOUCHEVENTF_DOWN;
+            } else if (button_pressed && mouse_state.last_button_pressed) {
+                mouse_state.touch_event = TOUCHEVENTF_MOVE;
+            } else if (!button_pressed && mouse_state.last_button_pressed) {
+                mouse_state.touch_event = TOUCHEVENTF_UP;
+            }
+
+            mouse_state.last_button_pressed = button_pressed;
+            if (mouse_state.touch_event) {
+                GetCursorPos(&mouse_state.pos);
+                // send fake event to make the game update it's touch inputs
+                auto wndProc = (WNDPROC) GetWindowLongPtr(hWnd, GWLP_WNDPROC);
+                wndProc(hWnd, WM_TOUCH, MAKEWORD(1, 0), (LPARAM) GetTouchInputInfoHook);
+            }
+        }
     }
 }
+ 

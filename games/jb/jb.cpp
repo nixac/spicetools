@@ -10,9 +10,14 @@
 #include "util/detour.h"
 #include "util/libutils.h"
 
+#define JB_BUTTON_SIZE 160
+#define JB_BUTTON_GAP 37
+#define JB_BUTTON_HITBOX (JB_BUTTON_SIZE + JB_BUTTON_GAP)
+
 namespace games::jb {
 
     // touch stuff
+    bool TOUCH_LEGACY_BOX = false;
     static bool TOUCH_ENABLE = false;
     static bool TOUCH_ATTACHED = false;
     static bool IS_PORTRAIT = true;
@@ -68,19 +73,61 @@ namespace games::jb {
         memset(TOUCH_STATE, 0, sizeof(TOUCH_STATE));
 
         // check touch points
+        // note that the IO code in device.cpp will correctly compensate for orientation, depending on the model.
         TOUCH_POINTS.clear();
         touch_get_points(TOUCH_POINTS);
-        auto offset = IS_PORTRAIT ? 580 : 0;
-        for (auto &tp : TOUCH_POINTS) {
+        if (TOUCH_LEGACY_BOX) {
+            auto offset = IS_PORTRAIT ? 580 : 0;
+            for (auto &tp : TOUCH_POINTS) {
 
-            // get grid coordinates
-            int x = tp.x * 4 / 768;
-            int y = (tp.y - offset) * 4 / (1360 - 580);
+                // get grid coordinates
+                int x = tp.x * 4 / 768;
+                int y = (tp.y - offset) * 4 / (1360 - 580);
 
-            // set the corresponding state
-            int index = y * 4 + x;
-            if (index >= 0 && index < 16) {
-                TOUCH_STATE[index] = true;
+                // set the corresponding state
+                int index = y * 4 + x;
+                if (index >= 0 && index < 16) {
+                    TOUCH_STATE[index] = true;
+                }
+            }
+        } else {
+            for (auto &tp : TOUCH_POINTS) {
+                int x_relative = tp.x;
+                int y_relative = tp.y;
+
+                // x_relative and y_relative are relative to the top-left pixel of the first button
+                if (IS_PORTRAIT) {
+                    // which is at (8, 602) in portrait:
+                    //   X: [8...759] (752 pixels wide)
+                    //   Y: [602...1353] (752 pixels high)
+                    x_relative -= 8;
+                    y_relative -= 602;
+                } else {
+                    // and at (8, 8) in landscape
+                    x_relative -= 8;
+                    y_relative -= 8;
+                }
+
+                if (x_relative < 0 || y_relative < 0) {
+                    continue;
+                }
+
+                // x_hitbox and y_hitbox is relative to top-left pixel of each button
+                int x_index = x_relative / JB_BUTTON_HITBOX;
+                int x_hitbox = x_relative % JB_BUTTON_HITBOX;
+                int y_index = y_relative / JB_BUTTON_HITBOX;
+                int y_hitbox = y_relative % JB_BUTTON_HITBOX;
+
+                // check if the gap was touched
+                if (x_hitbox > JB_BUTTON_SIZE || y_hitbox > JB_BUTTON_SIZE) {
+                    continue;
+                }
+
+                // set the corresponding state
+                int index = y_index * 4 + x_index;
+                if (0 <= index && index < 16) {
+                    TOUCH_STATE[index] = true;
+                }
             }
         }
     }

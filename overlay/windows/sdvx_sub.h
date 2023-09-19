@@ -4,27 +4,18 @@
 #include <optional>
 
 #include <windows.h>
-#include <d3d9.h>
 
 #include "overlay/window.h"
+#include "overlay/windows/generic_sub.h"
 
 namespace overlay::windows {
 
-    class SDVXSubScreen : public Window {
+    class SDVXSubScreen : public GenericSubScreen {
     public:
         SDVXSubScreen(SpiceOverlay *overlay);
 
-        void build_content() override;
-
-    private:
-        bool build_texture(IDirect3DSurface9 *surface);
-        void draw_texture();
-
-        std::optional<std::string> status_message = std::nullopt;
-
-        IDirect3DDevice9 *device = nullptr;
-        IDirect3DTexture9 *texture = nullptr;
-        ImVec2 texture_size;
+    protected:
+        void touch_transform(const ImVec2 xy_in, LONG *x_out, LONG *y_out) override;
     };
 }
 

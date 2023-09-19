@@ -873,7 +873,12 @@ void touch_get_points(std::vector<TouchPoint> &touch_points, bool overlay) {
     }
 
     // overlay override
-    if (!overlay && overlay::OVERLAY && ImGui::GetIO().WantCaptureMouse) {
+    if (!overlay &&
+        overlay::OVERLAY &&
+        overlay::OVERLAY->get_active() &&
+        !overlay::OVERLAY->can_transform_touch_input() &&
+        ImGui::GetIO().WantCaptureMouse) {
+
         return;
     }
 
@@ -895,7 +900,12 @@ void touch_get_events(std::vector<TouchEvent> &touch_events, bool overlay) {
     std::lock_guard<std::mutex> lock(TOUCH_EVENTS_M);
 
     // overlay override
-    if (!overlay && overlay::OVERLAY && ImGui::GetIO().WantCaptureMouse) {
+    if (!overlay &&
+        overlay::OVERLAY &&
+        overlay::OVERLAY->get_active() &&
+        !overlay::OVERLAY->can_transform_touch_input() &&
+        ImGui::GetIO().WantCaptureMouse) {
+
         TOUCH_EVENTS.reset();
         return;
     }

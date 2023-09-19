@@ -10,6 +10,7 @@
 #include "avs/game.h"
 #include "cfg/icon.h"
 #include "cfg/screen_resize.h"
+#include "games/ddr/ddr.h"
 #include "hooks/graphics/backends/d3d9/d3d9_backend.h"
 #include "launcher/shutdown.h"
 #include "overlay/overlay.h"
@@ -18,6 +19,7 @@
 #include "util/logging.h"
 #include "util/fileutils.h"
 #include "util/utils.h"
+#include "misc/wintouchemu.h"
 #include "util/time.h"
 
 struct CaptureData {
@@ -47,8 +49,8 @@ bool GRAPHICS_CAPTURE_CURSOR = false;
 bool GRAPHICS_LOG_HRESULT = false;
 bool GRAPHICS_SDVX_FORCE_720 = false;
 bool GRAPHICS_SHOW_CURSOR = false;
+graphics_orientation GRAPHICS_ADJUST_ORIENTATION = ORIENTATION_NORMAL;
 bool GRAPHICS_WINDOWED = false;
-bool GRAPHICS_ADJUST_ORIENTATION = false;
 std::vector<HWND> GRAPHICS_WINDOWS;
 UINT GRAPHICS_FORCE_REFRESH = 0;
 bool GRAPHICS_FORCE_SINGLE_ADAPTER = false;
@@ -125,6 +127,24 @@ static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
                 break;
         }
     }
+
+    if (wintouchemu::INJECT_MOUSE_AS_WM_TOUCH) {
+        // drop mouse inputs since only wintouches should be used
+        switch (uMsg) {
+            case WM_LBUTTONDOWN:
+            case WM_LBUTTONUP:
+            case WM_MBUTTONDOWN:
+            case WM_MBUTTONUP:
+            case WM_RBUTTONDOWN:
+            case WM_RBUTTONUP:
+            case WM_XBUTTONDOWN:
+            case WM_XBUTTONUP:
+                return true;
+        }
+    }
+
+    // window resize
+    graphics_windowed_wndproc(hWnd, uMsg, wParam, lParam);
 
     // call custom procedures
     for (WNDPROC wndProc : WNDPROC_CUSTOM) {
@@ -265,23 +285,35 @@ static HWND WINAPI CreateWindowExA_hook(DWORD dwExStyle, LPCSTR lpClassName, LPC
             fmt::ptr(lpParam));
 
     // set display orientation
-    if (GRAPHICS_ADJUST_ORIENTATION) {
-        if (nHeight > nWidth) {
-            DEVMODE mode {};
+    // only do this when the target window is portrait
+    // (avoid doing this for SDVX subscreen which is in landscape, for example)
+    if ((nHeight > nWidth) &&
+        (GRAPHICS_ADJUST_ORIENTATION == ORIENTATION_CW ||
+         GRAPHICS_ADJUST_ORIENTATION == ORIENTATION_CCW)) {
+        DWORD orientation = (GRAPHICS_ADJUST_ORIENTATION == ORIENTATION_CW) ? DMDO_90 : DMDO_270;
+        DEVMODE mode {};
 
-            // get display settings
-            if (EnumDisplaySettings(0, ENUM_CURRENT_SETTINGS, &mode)) {
-                log_misc("graphics", "rotating display");
-                mode.dmPelsWidth = nWidth;
-                mode.dmPelsHeight = nHeight;
-                mode.dmDisplayOrientation = DMDO_90;
-                auto disp_res = ChangeDisplaySettings(&mode, CDS_FULLSCREEN);
-                if (disp_res != DISP_CHANGE_SUCCESSFUL) {
-                    log_warning("graphics", "failed to change display settings: {}", disp_res);
-                }
-            } else {
-                log_warning("graphics", "failed to get display settings");
+        // get display settings
+        if (EnumDisplaySettings(0, ENUM_CURRENT_SETTINGS, &mode)) {
+            log_misc("graphics", "auto-rotate: rotating display to DMDO_xx mode {}", orientation);
+            mode.dmPelsWidth = nWidth;
+            mode.dmPelsHeight = nHeight;
+            mode.dmDisplayOrientation = orientation;
+            if (GRAPHICS_FORCE_REFRESH > 0) {
+                log_info(
+                    "graphics",
+                    "auto-rotate: force refresh rate: {} => {} Hz",
+                    mode.dmDisplayFrequency,
+                    GRAPHICS_FORCE_REFRESH);
+
+                mode.dmDisplayFrequency = GRAPHICS_FORCE_REFRESH;
             }
+            auto disp_res = ChangeDisplaySettings(&mode, CDS_FULLSCREEN);
+            if (disp_res != DISP_CHANGE_SUCCESSFUL) {
+                log_warning("graphics", "auto-rotate: failed to change display settings: {}", disp_res);
+            }
+        } else {
+            log_warning("graphics", "auto-rotate: failed to get display settings");
         }
     }
 
@@ -328,7 +360,11 @@ static HWND WINAPI CreateWindowExW_hook(DWORD dwExStyle, LPCWSTR lpClassName, LP
 
             // adjust window size to include window decoration
             RECT rect {};
-            SetRect(&rect, 0, 0, 1280, 720);
+            if (games::ddr::SDMODE) {
+                SetRect(&rect, 0, 0, 800, 600);
+            } else {
+                SetRect(&rect, 0, 0, 1280, 720);
+            }
             AdjustWindowRect(&rect, dwStyle, (hMenu != nullptr));
 
             nWidth = rect.right - rect.left;
@@ -683,6 +719,8 @@ void graphics_hook_window(HWND hWnd, D3DPRESENT_PARAMETERS *pPresentationParamet
     if (WNDPROC_ORIG == nullptr) {
         WNDPROC_ORIG = reinterpret_cast<WNDPROC>(GetWindowLongPtrA(hWnd, GWLP_WNDPROC));
         SetWindowLongPtrA(hWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WindowProc));
+        overlay::USE_WM_CHAR_FOR_IMGUI_CHAR_INPUT = true;
+        graphics_capture_initial_window(hWnd);
     }
 }
 

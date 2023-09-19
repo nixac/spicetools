@@ -11,15 +11,20 @@
 
 static std::string WINDOW_TITLE = "REFLEC BEAT";
 
+namespace games::rb {
+    uint16_t TOUCH_SCALING = 1000;
+}
+
 games::rb::ReflecBeatTouchDeviceHandle::ReflecBeatTouchDeviceHandle(bool log_fps) {
     this->log_fps = log_fps;
 }
 
 void games::rb::ReflecBeatTouchDeviceHandle::grid_insert(unsigned char *data, int cursor_x, int cursor_y) {
 
-    // scale to grid position
+    // scale to grid position - there are 48 columns and 76 rows of IR sensors.
+    // for whatever reason, the last y row (#75) results in weird input few rows above; just drop it
     int grid_x = CLAMP((cursor_x * 48) / window_width, 0, 47);
-    int grid_y = CLAMP((cursor_y * 76) / window_height, 0, 75);
+    int grid_y = CLAMP((cursor_y * 76) / window_height, 0, 74);
 
     // get bit positions
     int bit_x = 88 + grid_x;
@@ -121,6 +126,8 @@ int games::rb::ReflecBeatTouchDeviceHandle::read(LPVOID lpBuffer, DWORD nNumberO
     // data header
     data[0] = 0x55;
     data[2] = 0x4C;
+   
+    const auto SCALE_FACTOR = games::rb::TOUCH_SCALING / 1000.f;
 
     // iterate all touch points
     auto offset_x = (int) (window_width / 48.0 / 3.0);
@@ -139,9 +146,19 @@ int games::rb::ReflecBeatTouchDeviceHandle::read(LPVOID lpBuffer, DWORD nNumberO
             y = window_height - point.x;
         }
 
+        // apply scaling
+        x = x - (window_width * (1.f - SCALE_FACTOR) / 2);
+        x = x / SCALE_FACTOR;
+        y = y - (window_height * (1.f - SCALE_FACTOR) / 2);
+        y = y / SCALE_FACTOR;
+
+        if (x < 0 || window_width <= x || y < 0 || window_height <= y) {
+            continue;
+        }
+
         // point scaling
-        auto point_x = (int) ((x - window_width / 2.0) * 48.0 / 54.0 + window_width / 2.0);
-        auto point_y = (int) (y - window_height / 76);
+        const auto point_x = (int) ((x - window_width / 2.0) * 48.0 / 54.0 + window_width / 2.0);
+        const auto point_y = (int) (y - window_height / 76);
 
         // insert 9 times with offset to double the precision
         grid_insert(data, point_x, point_y);

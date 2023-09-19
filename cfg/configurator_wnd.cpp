@@ -29,7 +29,7 @@ cfg::ConfiguratorWindow::ConfiguratorWindow() {
 
     // determine window title
     if (cfg::CONFIGURATOR_TYPE == cfg::ConfigType::Config) {
-        WINDOW_TITLE = "SpiceTools Config (" + to_string(VERSION_STRING_CFG) + ")";
+        WINDOW_TITLE = "spice2x config - a fork of SpiceTools (" + to_string(VERSION_STRING_CFG) + ")";
         WINDOW_SIZE_X = 800;
         WINDOW_SIZE_Y = 600;
     } else if (cfg::CONFIGURATOR_TYPE == cfg::ConfigType::KFControl) {
@@ -49,6 +49,10 @@ cfg::ConfiguratorWindow::ConfiguratorWindow() {
             NULL,
             GetModuleHandle(NULL),
             (LPVOID) this);
+
+    if (this->hWnd) {
+        overlay::USE_WM_CHAR_FOR_IMGUI_CHAR_INPUT = true;
+    }
 }
 
 cfg::ConfiguratorWindow::~ConfiguratorWindow() {

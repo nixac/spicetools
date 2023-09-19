@@ -4,6 +4,7 @@
 #include "games/bs/io.h"
 #include "games/nost/io.h"
 #include "games/scotto/io.h"
+#include "games/sdvx/sdvx.h"
 #include "games/sdvx/io.h"
 #include "misc/eamuse.h"
 #include "rawinput/rawinput.h"
@@ -342,18 +343,18 @@ static char __cdecl ac_io_kfca_update_control_status_buffer() {
 
         // volume left
         if (Buttons::getState(RI_MGR, buttons.at(games::sdvx::Buttons::VOL_L_Left))) {
-            KFCA_VOLL = (KFCA_VOLL - 16) & 1023;
+            KFCA_VOLL = (KFCA_VOLL - games::sdvx::DIGITAL_KNOB_SENS) & 1023;
         }
         if (Buttons::getState(RI_MGR, buttons.at(games::sdvx::Buttons::VOL_L_Right))) {
-            KFCA_VOLL = (KFCA_VOLL + 16) & 1023;
+            KFCA_VOLL = (KFCA_VOLL + games::sdvx::DIGITAL_KNOB_SENS) & 1023;
         }
 
         // volume right
         if (Buttons::getState(RI_MGR, buttons.at(games::sdvx::Buttons::VOL_R_Left))) {
-            KFCA_VOLR = (KFCA_VOLR - 16) & 1023;
+            KFCA_VOLR = (KFCA_VOLR - games::sdvx::DIGITAL_KNOB_SENS) & 1023;
         }
         if (Buttons::getState(RI_MGR, buttons.at(games::sdvx::Buttons::VOL_R_Right))) {
-            KFCA_VOLR = (KFCA_VOLR + 16) & 1023;
+            KFCA_VOLR = (KFCA_VOLR + games::sdvx::DIGITAL_KNOB_SENS) & 1023;
         }
 
         // update volumes

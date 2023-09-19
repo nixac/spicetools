@@ -8,6 +8,7 @@
 #include "launcher/launcher.h"
 #include "touch/touch.h"
 #include "util/utils.h"
+#include "games/iidx/iidx.h"
 
 using namespace std::placeholders;
 using namespace rapidjson;
@@ -16,6 +17,9 @@ using namespace rapidjson;
 namespace api::modules {
 
     Touch::Touch() : Module("touch") {
+        is_sdvx = avs::game::is_model("KFC");
+        is_tdj_fhd = (avs::game::is_model("LDJ") && games::iidx::is_tdj_fhd());
+
         functions["read"] = std::bind(&Touch::read, this, _1, _2);
         functions["write"] = std::bind(&Touch::write, this, _1, _2);
         functions["write_reset"] = std::bind(&Touch::write_reset, this, _1, _2);
@@ -78,27 +82,14 @@ namespace api::modules {
             auto touch_x = param[1].GetInt();
             auto touch_y = param[2].GetInt();
 
-            // TODO: move this check somewhere better
-            if (avs::game::is_model("KFC")) {
+            apply_touch_errata(touch_x, touch_y);
 
-                // mirror
-                touch_points.emplace_back(TouchPoint {
-                    .id = touch_id,
-                    .x = 1080 - touch_y,
-                    .y = touch_x,
-                    .mouse = false,
-                });
-
-            } else {
-
-                // normal
-                touch_points.emplace_back(TouchPoint {
-                    .id = touch_id,
-                    .x = touch_x,
-                    .y = touch_y,
-                    .mouse = false,
-                });
-            }
+            touch_points.emplace_back(TouchPoint {
+                .id = touch_id,
+                .x = touch_x,
+                .y = touch_y,
+                .mouse = false,
+            });
         }
 
         // apply touch points
@@ -127,5 +118,22 @@ namespace api::modules {
 
         // remove all IDs
         touch_remove_points(&touch_point_ids);
+    }
+
+    void Touch::apply_touch_errata(int &x, int &y) {
+        int x_raw = x;
+        int y_raw = y;
+
+        if (is_tdj_fhd) {
+            // deal with TDJ FHD resolution mismatch (upgrade 720p to 1080p)
+            // we don't know what screen is being shown on the companion and the API doesn't specify
+            // the target of the touch events so just assume it's the sub screen
+            x = x_raw * 1920 / 1280;
+            y = y_raw * 1080 / 720;
+        } else if (is_sdvx) {
+            // for exceed gear, they are both 1080p screens, but need to apply transformation
+            x = 1080 - y_raw;
+            y = x_raw;
+        }
     }
 }

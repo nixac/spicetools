@@ -3,10 +3,13 @@
 #include "avs/game.h"
 #include "cfg/configurator.h"
 #include "games/io.h"
+#include "games/iidx/iidx.h"
 #include "hooks/graphics/graphics.h"
 #include "misc/eamuse.h"
 #include "touch/touch.h"
 #include "util/logging.h"
+#include "util/resutils.h"
+#include "build/resource.h"
 
 #include "imgui/impl_dx9.h"
 #include "imgui/impl_spice.h"
@@ -21,7 +24,13 @@
 #include "windows/config.h"
 #include "windows/control.h"
 #include "windows/fps.h"
+#include "windows/generic_sub.h"
+#include "windows/iidx_seg.h"
 #include "windows/iidx_sub.h"
+#include "windows/iopanel.h"
+#include "windows/iopanel_ddr.h"
+#include "windows/iopanel_gfdm.h"
+#include "windows/iopanel_iidx.h"
 #include "windows/sdvx_sub.h"
 #include "windows/keypad.h"
 #include "windows/kfcontrol.h"
@@ -29,14 +38,25 @@
 #include "windows/patch_manager.h"
 #include "windows/vr.h"
 
+static inline ImVec4 operator*(const ImVec4& lhs, const ImVec4& rhs) \
+    { return ImVec4(lhs.x * rhs.x, lhs.y * rhs.y, lhs.z * rhs.z, lhs.w * rhs.w); }
+
 namespace overlay {
 
     // settings
     bool ENABLED = true;
+    bool AUTO_SHOW_FPS = false;
+    bool AUTO_SHOW_SUBSCREEN = false;
+    bool AUTO_SHOW_IOPANEL = false;
+    bool AUTO_SHOW_KEYPAD_P1 = false;
+    bool AUTO_SHOW_KEYPAD_P2 = false;
+
+    bool USE_WM_CHAR_FOR_IMGUI_CHAR_INPUT = false;
 
     // global
     std::mutex OVERLAY_MUTEX;
     std::unique_ptr<overlay::SpiceOverlay> OVERLAY = nullptr;
+    ImFont* DSEG_FONT = nullptr;
 }
 
 static void *ImGui_Alloc(size_t sz, void *user_data) {
@@ -146,37 +166,71 @@ void overlay::SpiceOverlay::init() {
         style.WindowRounding = 0;
     }
 
-    // red theme
-    /*
+    // red theme based on:
+    // https://github.com/ocornut/imgui/issues/707#issuecomment-760220280
+    // r, g, b, a
     ImVec4* colors = ImGui::GetStyle().Colors;
-    colors[ImGuiCol_Border]                 = ImVec4(0.50f, 0.43f, 0.43f, 0.50f);
-    colors[ImGuiCol_FrameBg]                = ImVec4(0.48f, 0.16f, 0.16f, 0.54f);
-    colors[ImGuiCol_FrameBgHovered]         = ImVec4(0.98f, 0.26f, 0.26f, 0.40f);
-    colors[ImGuiCol_FrameBgActive]          = ImVec4(0.98f, 0.26f, 0.26f, 0.67f);
+    // colors[ImGuiCol_Text]                   = ImVec4(0.75f, 0.75f, 0.75f, 1.00f);
+    // colors[ImGuiCol_TextDisabled]           = ImVec4(0.35f, 0.35f, 0.35f, 1.00f);
+
+    // colors[ImGuiCol_WindowBg]               = ImVec4(0.00f, 0.00f, 0.00f, 0.94f);
+    // colors[ImGuiCol_ChildBg]                = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    // colors[ImGuiCol_PopupBg]                = ImVec4(0.08f, 0.08f, 0.08f, 0.94f);
+
+    colors[ImGuiCol_Border]                 = ImVec4(0.00f, 0.00f, 0.00f, 0.50f);
+    colors[ImGuiCol_BorderShadow]           = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_FrameBg]                = ImVec4(0.37f, 0.14f, 0.00f, 0.54f);
+    colors[ImGuiCol_FrameBgHovered]         = ImVec4(0.37f, 0.14f, 0.14f, 0.67f);
+    colors[ImGuiCol_FrameBgActive]          = ImVec4(0.39f, 0.20f, 0.20f, 0.67f);
+    colors[ImGuiCol_TitleBg]                = ImVec4(0.04f, 0.04f, 0.04f, 1.00f);
     colors[ImGuiCol_TitleBgActive]          = ImVec4(0.48f, 0.16f, 0.16f, 1.00f);
-    colors[ImGuiCol_CheckMark]              = ImVec4(0.98f, 0.26f, 0.26f, 1.00f);
-    colors[ImGuiCol_SliderGrab]             = ImVec4(0.88f, 0.24f, 0.24f, 1.00f);
-    colors[ImGuiCol_SliderGrabActive]       = ImVec4(0.98f, 0.26f, 0.26f, 1.00f);
-    colors[ImGuiCol_Button]                 = ImVec4(0.98f, 0.26f, 0.26f, 0.40f);
-    colors[ImGuiCol_ButtonHovered]          = ImVec4(0.98f, 0.26f, 0.26f, 1.00f);
-    colors[ImGuiCol_ButtonActive]           = ImVec4(0.98f, 0.06f, 0.06f, 1.00f);
-    colors[ImGuiCol_Header]                 = ImVec4(0.98f, 0.26f, 0.26f, 0.31f);
-    colors[ImGuiCol_HeaderHovered]          = ImVec4(0.98f, 0.26f, 0.26f, 0.80f);
-    colors[ImGuiCol_HeaderActive]           = ImVec4(0.98f, 0.26f, 0.26f, 1.00f);
-    colors[ImGuiCol_Separator]              = ImVec4(0.50f, 0.43f, 0.43f, 0.50f);
-    colors[ImGuiCol_SeparatorHovered]       = ImVec4(0.75f, 0.10f, 0.10f, 0.78f);
-    colors[ImGuiCol_SeparatorActive]        = ImVec4(0.75f, 0.10f, 0.10f, 1.00f);
-    colors[ImGuiCol_ResizeGrip]             = ImVec4(0.98f, 0.26f, 0.26f, 0.25f);
-    colors[ImGuiCol_ResizeGripHovered]      = ImVec4(0.98f, 0.26f, 0.26f, 0.67f);
-    colors[ImGuiCol_ResizeGripActive]       = ImVec4(0.98f, 0.26f, 0.26f, 0.95f);
-    colors[ImGuiCol_Tab]                    = ImVec4(0.58f, 0.18f, 0.18f, 0.86f);
-    colors[ImGuiCol_TabHovered]             = ImVec4(0.98f, 0.26f, 0.26f, 0.80f);
-    colors[ImGuiCol_TabActive]              = ImVec4(0.68f, 0.20f, 0.20f, 1.00f);
-    colors[ImGuiCol_TabUnfocused]           = ImVec4(0.15f, 0.07f, 0.07f, 0.97f);
-    colors[ImGuiCol_TabUnfocusedActive]     = ImVec4(0.42f, 0.14f, 0.14f, 1.00f);
-    colors[ImGuiCol_TextSelectedBg]         = ImVec4(0.98f, 0.26f, 0.26f, 0.35f);
-    colors[ImGuiCol_NavHighlight]           = ImVec4(0.98f, 0.26f, 0.26f, 1.00f);
-    */
+    colors[ImGuiCol_TitleBgCollapsed]       = ImVec4(0.48f, 0.16f, 0.16f, 1.00f);
+    colors[ImGuiCol_MenuBarBg]              = ImVec4(0.14f, 0.14f, 0.14f, 1.00f);
+    colors[ImGuiCol_ScrollbarBg]            = ImVec4(0.02f, 0.02f, 0.02f, 0.53f);
+    colors[ImGuiCol_ScrollbarGrab]          = ImVec4(0.31f, 0.31f, 0.31f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabHovered]   = ImVec4(0.41f, 0.41f, 0.41f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabActive]    = ImVec4(0.51f, 0.51f, 0.51f, 1.00f);
+    colors[ImGuiCol_CheckMark]              = ImVec4(0.56f, 0.10f, 0.10f, 1.00f);
+    colors[ImGuiCol_SliderGrab]             = ImVec4(1.00f, 0.19f, 0.19f, 0.40f);
+    colors[ImGuiCol_SliderGrabActive]       = ImVec4(0.89f, 0.00f, 0.19f, 1.00f);
+
+    colors[ImGuiCol_Button]                 = ImVec4(1.00f, 0.19f, 0.19f, 0.40f);
+    colors[ImGuiCol_ButtonHovered]          = ImVec4(0.80f, 0.17f, 0.00f, 1.00f);
+    colors[ImGuiCol_ButtonActive]           = ImVec4(0.89f, 0.00f, 0.19f, 1.00f);
+
+    colors[ImGuiCol_Header]                 = ImVec4(0.33f, 0.35f, 0.36f, 0.53f);
+    colors[ImGuiCol_HeaderHovered]          = ImVec4(0.76f, 0.28f, 0.44f, 0.67f);
+    colors[ImGuiCol_HeaderActive]           = ImVec4(0.47f, 0.47f, 0.47f, 0.67f);
+    colors[ImGuiCol_Separator]              = ImVec4(0.32f, 0.32f, 0.32f, 1.00f);
+    colors[ImGuiCol_SeparatorHovered]       = ImVec4(0.32f, 0.32f, 0.32f, 1.00f);
+    colors[ImGuiCol_SeparatorActive]        = ImVec4(0.32f, 0.32f, 0.32f, 1.00f);
+    colors[ImGuiCol_ResizeGrip]             = ImVec4(1.00f, 1.00f, 1.00f, 0.85f);
+    colors[ImGuiCol_ResizeGripHovered]      = ImVec4(1.00f, 1.00f, 1.00f, 0.60f);
+    colors[ImGuiCol_ResizeGripActive]       = ImVec4(1.00f, 1.00f, 1.00f, 0.90f);
+
+    colors[ImGuiCol_Tab]                    = colors[ImGuiCol_Button];
+    colors[ImGuiCol_TabHovered]             = colors[ImGuiCol_ButtonHovered];
+    colors[ImGuiCol_TabActive]              = colors[ImGuiCol_ButtonActive];
+    colors[ImGuiCol_TabUnfocused]           = colors[ImGuiCol_Tab] * ImVec4(1.0f, 1.0f, 1.0f, 0.6f);
+    colors[ImGuiCol_TabUnfocusedActive]     = colors[ImGuiCol_TabActive] * ImVec4(1.0f, 1.0f, 1.0f, 0.6f);
+
+    colors[ImGuiCol_DockingPreview]         = ImVec4(0.47f, 0.47f, 0.47f, 0.47f);
+    colors[ImGuiCol_DockingEmptyBg]         = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
+    colors[ImGuiCol_PlotLines]              = ImVec4(0.61f, 0.61f, 0.61f, 1.00f);
+    colors[ImGuiCol_PlotLinesHovered]       = ImVec4(1.00f, 0.43f, 0.35f, 1.00f);
+    colors[ImGuiCol_PlotHistogram]          = ImVec4(0.90f, 0.70f, 0.00f, 1.00f);
+    colors[ImGuiCol_PlotHistogramHovered]   = ImVec4(1.00f, 0.60f, 0.00f, 1.00f);
+    colors[ImGuiCol_TableHeaderBg]          = ImVec4(0.19f, 0.19f, 0.20f, 1.00f);
+    colors[ImGuiCol_TableBorderStrong]      = ImVec4(0.31f, 0.31f, 0.35f, 1.00f);
+    colors[ImGuiCol_TableBorderLight]       = ImVec4(0.23f, 0.23f, 0.25f, 1.00f);
+    colors[ImGuiCol_TableRowBg]             = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_TableRowBgAlt]          = ImVec4(1.00f, 1.00f, 1.00f, 0.07f);
+    colors[ImGuiCol_TextSelectedBg]         = ImVec4(0.26f, 0.59f, 0.98f, 0.35f);
+    colors[ImGuiCol_DragDropTarget]         = ImVec4(1.00f, 1.00f, 0.00f, 0.90f);
+    colors[ImGuiCol_NavHighlight]           = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+    colors[ImGuiCol_NavWindowingHighlight]  = ImVec4(1.00f, 1.00f, 1.00f, 0.70f);
+    colors[ImGuiCol_NavWindowingDimBg]      = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
+    colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.80f, 0.80f, 0.80f, 0.35f);
 
     // configure IO
     auto &io = ImGui::GetIO();
@@ -219,6 +273,16 @@ void overlay::SpiceOverlay::init() {
     io.Fonts->AddFontFromFileTTF(R"(C:\Windows\Fonts\arial.ttf)",
             13.0f, &config, io.Fonts->GetGlyphRangesVietnamese());
 
+    // add special font
+    if (avs::game::is_model("LDJ")) {
+        DWORD size;
+        ImFontConfig config {};
+        config.FontDataOwnedByAtlas = false;
+        auto buffer = resutil::load_file(IDR_DSEGFONT, &size);
+        DSEG_FONT = io.Fonts->AddFontFromMemoryTTF((void *)buffer, size,
+            overlay::windows::IIDX_SEGMENT_FONT_SIZE);
+    }
+
     // init implementation
     ImGui_ImplSpice_Init(this->hWnd);
     switch (this->renderer) {
@@ -246,27 +310,88 @@ void overlay::SpiceOverlay::init() {
     ImGui::Begin("Temp");
     ImGui::End();
 
+    bool set_overlay_active = false;
+
     // referenced windows
     this->window_add(window_fps = new overlay::windows::FPS(this));
+    if (!cfg::CONFIGURATOR_STANDALONE && AUTO_SHOW_FPS) {
+        window_fps->set_active(true);
+        set_overlay_active = true;
+    }
 
     // add default windows
     this->window_add(new overlay::windows::Config(this));
     this->window_add(new overlay::windows::Control(this));
     this->window_add(new overlay::windows::Log(this));
     this->window_add(new overlay::windows::CardManager(this));
-    this->window_add(new overlay::windows::ScreenResize(this));
+    if (!cfg::CONFIGURATOR_STANDALONE) {
+        this->window_add(new overlay::windows::ScreenResize(this));
+    }
     this->window_add(new overlay::windows::PatchManager(this));
-    this->window_add(new overlay::windows::Keypad(this, 0));
     this->window_add(new overlay::windows::KFControl(this));
     this->window_add(new overlay::windows::VRWindow(this));
+
+    {
+        const auto keypad_p1 = new overlay::windows::Keypad(this, 0);
+        this->window_add(keypad_p1);
+        if (!cfg::CONFIGURATOR_STANDALONE && AUTO_SHOW_KEYPAD_P1) {
+            keypad_p1->set_active(true);
+            set_overlay_active = true;
+        }
+    }
     if (eamuse_get_game_keypads() > 1) {
-        this->window_add(new overlay::windows::Keypad(this, 1));
+        const auto keypad_p2 = new overlay::windows::Keypad(this, 1);
+        this->window_add(keypad_p2);
+        if (!cfg::CONFIGURATOR_STANDALONE && AUTO_SHOW_KEYPAD_P2) {
+            keypad_p2->set_active(true);
+            set_overlay_active = true;
+        }
     }
-    if (avs::game::is_model("LDJ")) {
-        this->window_add(new overlay::windows::IIDXSubScreen(this));
+
+    // IO panel needs to know what game is running
+    if (!cfg::CONFIGURATOR_STANDALONE) {
+        overlay::Window *iopanel = nullptr;
+        if (avs::game::is_model("LDJ")) {
+            iopanel = new overlay::windows::IIDXIOPanel(this);
+        } else if (avs::game::is_model("MDX")) {
+            iopanel = new overlay::windows::DDRIOPanel(this);
+        } else if (avs::game::is_model({"J32", "J33", "K32", "K33", "L32", "L33", "M32"})) {
+            iopanel = new overlay::windows::GitadoraIOPanel(this);
+        } else {
+            iopanel = new overlay::windows::IOPanel(this);
+        }
+        if (iopanel) {
+            this->window_add(iopanel);
+            if (AUTO_SHOW_IOPANEL) {
+                iopanel->set_active(true);
+                set_overlay_active = true;
+            }
+        }
     }
-    if (avs::game::is_model("KFC")) {
-        this->window_add(new overlay::windows::SDVXSubScreen(this));
+
+    // subscreens need DirectX, so don't try to initialize them in standalone
+    if (!cfg::CONFIGURATOR_STANDALONE) {
+        overlay::Window *subscreen = nullptr;
+        if (avs::game::is_model("LDJ")) {
+            if (games::iidx::TDJ_MODE) {
+                subscreen = new overlay::windows::IIDXSubScreen(this);
+            } else {
+                subscreen = new overlay::windows::IIDXSegmentDisplay(this);
+            }
+        } else if (avs::game::is_model("KFC")) {
+            subscreen = new overlay::windows::SDVXSubScreen(this);
+        }
+        if (subscreen) {
+            this->window_add(subscreen);
+            if (AUTO_SHOW_SUBSCREEN) {
+                subscreen->set_active(true);
+                set_overlay_active = true;
+            }
+        }
+    }
+
+    if (set_overlay_active) {
+        this->set_active(true);
     }
 }
 
@@ -533,15 +658,7 @@ void overlay::SpiceOverlay::reset_recreate() {
     ImGui_ImplDX9_CreateDeviceObjects();
 }
 
-void overlay::SpiceOverlay::input_char(unsigned int c, bool rawinput) {
-
-    // disable rawinput characters once we got one from somewhere else (such as a WndProc)
-    if (!rawinput) {
-        this->rawinput_char = false;
-    } else if (!this->rawinput_char) {
-        return;
-    }
-
+void overlay::SpiceOverlay::input_char(unsigned int c) {
     // add character to ImGui
     ImGui::GetIO().AddInputCharacter(c);
 }

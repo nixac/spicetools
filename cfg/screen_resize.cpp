@@ -1,11 +1,12 @@
 #include "screen_resize.h"
 
 #include "external/rapidjson/document.h"
-#include "external/rapidjson/writer.h"
+#include "external/rapidjson/pointer.h"
+#include "external/rapidjson/prettywriter.h"
+#include "misc/eamuse.h"
 #include "util/utils.h"
 #include "util/fileutils.h"
-
-using namespace rapidjson;
+#include "hooks/graphics/graphics.h"
 
 namespace cfg {
 
@@ -26,90 +27,180 @@ namespace cfg {
         log_info("ScreenResize", "loading config");
 
         std::string config = fileutils::text_read(this->config_path);
-        if (!config.empty()) {
+        if (config.empty()) {
+            return;
+        }
 
-            // parse document
-            Document doc;
-            doc.Parse(config.c_str());
+        // parse document
+        rapidjson::Document doc;
+        doc.Parse(config.c_str());
 
-            // check parse error
-            auto error = doc.GetParseError();
-            if (error) {
-                log_warning("ScreenResize", "config parse error: {}", error);
-            }
+        // check parse error
+        auto error = doc.GetParseError();
+        if (error) {
+            log_warning("ScreenResize", "config parse error: {}", error);
+            return;
+        }
 
-            // verify root is a dict
-            if (doc.IsObject()) {
-                bool valid = true;
-                auto offset_x = doc.FindMember("offset_x");
-                if (offset_x == doc.MemberEnd() || !offset_x->value.IsInt()) {
-                    log_warning("ScreenResize", "offset_x not found");
-                    valid = false;
-                }
-                auto offset_y = doc.FindMember("offset_y");
-                if (offset_y == doc.MemberEnd() || !offset_y->value.IsInt()) {
-                    log_warning("ScreenResize", "offset_y not found");
-                    valid = false;
-                }
-                auto scale_x = doc.FindMember("scale_x");
-                if (scale_x == doc.MemberEnd() || !scale_x->value.IsDouble()) {
-                    log_warning("ScreenResize", "scale_x not found");
-                    valid = false;
-                }
-                auto scale_y = doc.FindMember("scale_y");
-                if (scale_y == doc.MemberEnd() || !scale_y->value.IsDouble()) {
-                    log_warning("ScreenResize", "scale_y not found");
-                    valid = false;
-                }
-                auto enable_screen_resize = doc.FindMember("enable_screen_resize");
-                if (enable_screen_resize == doc.MemberEnd() || !enable_screen_resize->value.IsBool()) {
-                    log_warning("ScreenResize", "enable_screen_resize not found");
-                    valid = false;
-                }
-                auto enable_linear_filter = doc.FindMember("enable_linear_filter");
-                if (enable_linear_filter == doc.MemberEnd() || !enable_linear_filter->value.IsBool()) {
-                    log_warning("ScreenResize", "enable_linear_filter not found");
-                    valid = false;
-                }
-                auto keep_aspect_ratio = doc.FindMember("keep_aspect_ratio");
-                if (keep_aspect_ratio == doc.MemberEnd() || !keep_aspect_ratio->value.IsBool()) {
-                    log_warning("ScreenResize", "keep_aspect_ratio not found");
-                    valid = false;
-                }
-                if (valid) {
-                    this->offset_x = offset_x->value.GetInt();
-                    this->offset_y = offset_y->value.GetInt();
-                    this->scale_x = (float)scale_x->value.GetDouble();
-                    this->scale_y = (float)scale_y->value.GetDouble();
-                    this->enable_screen_resize = enable_screen_resize->value.GetBool();
-                    this->enable_linear_filter = enable_linear_filter->value.GetBool();
-                    this->keep_aspect_ratio = keep_aspect_ratio->value.GetBool();
-                }
-            } else {
-                log_warning("ScreenResize", "config not found");
+        // verify root is a dict
+        if (!doc.IsObject()) {
+            log_warning("ScreenResize", "config not found");
+            return;
+        }
+
+        bool use_game_setting = false;
+
+        std::string root("/");
+        // try to find game-specific setting, if one exists
+        {
+            const auto game = rapidjson::Pointer("/sp2x_games/" + eamuse_get_game()).Get(doc);
+            if (game && game->IsObject()) {
+                use_game_setting = true;
+                root = "/sp2x_games/" + eamuse_get_game() + "/";
             }
         }
+
+        log_misc(
+            "ScreenResize",
+            "Loading fullscreen image settings. Game = {}, is_global = {}, JSON path: {}",
+            eamuse_get_game(),
+            use_game_setting,
+            root);
+        load_int_value(doc, root + "offset_x", this->offset_x);
+        load_int_value(doc, root + "offset_y", this->offset_y);
+        load_float_value(doc, root + "scale_x", this->scale_x);
+        load_float_value(doc, root + "scale_y", this->scale_y);
+        load_bool_value(doc, root + "enable_screen_resize", this->enable_screen_resize);
+        load_bool_value(doc, root + "enable_linear_filter", this->enable_linear_filter);
+        load_bool_value(doc, root + "keep_aspect_ratio", this->keep_aspect_ratio);
+        load_bool_value(doc, root + "centered", this->centered);
+
+        // windowed settings are always under game settings
+        root = "/sp2x_games/" + eamuse_get_game() + "/";
+        log_misc(
+            "ScreenResize",
+            "Loading window settings. Game = {}, JSON path: {}",
+            eamuse_get_game(),
+            root);
+        load_bool_value(doc, root + "w_always_on_top", this->window_always_on_top);
+        load_bool_value(doc, root + "w_enable_resize", this->enable_window_resize);
+        load_bool_value(doc, root + "w_keep_aspect_ratio", this->client_keep_aspect_ratio);
+        load_int_value(doc, root + "w_border_type", this->window_decoration);
+        load_uint32_value(doc, root + "w_width", this->client_width);
+        load_uint32_value(doc, root + "w_height", this->client_height);
+        load_int_value(doc, root + "w_offset_x", this->window_offset_x);
+        load_int_value(doc, root + "w_offset_y", this->window_offset_y);
+    }
+
+    bool ScreenResize::load_bool_value(rapidjson::Document& doc, std::string path, bool& value) {
+        const auto v = rapidjson::Pointer(path).Get(doc);
+        if (!v) {
+            log_warning("ScreenResize", "{} not found", path);
+            return false;
+        }
+        if (!v->IsBool()) {
+            log_warning("ScreenResize", "{} is invalid type", path);
+            return false;
+        }
+        value = v->GetBool();
+        return true;
+    }
+
+    bool ScreenResize::load_int_value(rapidjson::Document& doc, std::string path, int& value) {
+        const auto v = rapidjson::Pointer(path).Get(doc);
+        if (!v) {
+            log_warning("ScreenResize", "{} not found", path);
+            return false;
+        }
+        if (!v->IsInt()) {
+            log_warning("ScreenResize", "{} is invalid type", path);
+            return false;
+        }
+        value = v->GetInt();
+        return true;
+    }
+
+    bool ScreenResize::load_uint32_value(rapidjson::Document& doc, std::string path, uint32_t& value) {
+        const auto v = rapidjson::Pointer(path).Get(doc);
+        if (!v) {
+            log_warning("ScreenResize", "{} not found", path);
+            return false;
+        }
+        if (!v->IsUint()) {
+            log_warning("ScreenResize", "{} is invalid type", path);
+            return false;
+        }
+        value = v->GetUint();
+        return true;
+    }
+
+    bool ScreenResize::load_float_value(rapidjson::Document& doc, std::string path, float& value) {
+        const auto v = rapidjson::Pointer(path).Get(doc);
+        if (!v) {
+            log_warning("ScreenResize", "{} not found", path);
+            return false;
+        }
+        if (v->IsInt()) {
+            value = v->GetInt();
+            return true;
+        }
+        if (v->IsDouble()) {
+            value = v->GetDouble();
+            return true;
+        }
+        if (v->IsFloat()) {
+            value = v->GetFloat();
+            return true;
+        }
+        return false;
     }
 
     void ScreenResize::config_save() {
         log_info("ScreenResize", "saving config");
 
-        // create document
-        Document doc;
-        doc.SetObject();
-        auto &alloc = doc.GetAllocator();
-        
-        doc.AddMember("offset_x", this->offset_x, alloc);
-        doc.AddMember("offset_y", this->offset_y, alloc);
-        doc.AddMember("scale_x", this->scale_x, alloc);
-        doc.AddMember("scale_y", this->scale_y, alloc);
-        doc.AddMember("enable_screen_resize", this->enable_screen_resize, alloc);
-        doc.AddMember("enable_linear_filter", this->enable_linear_filter, alloc);
-        doc.AddMember("keep_aspect_ratio", this->keep_aspect_ratio, alloc);
-        
+        rapidjson::Document doc;
+        std::string config = fileutils::text_read(this->config_path);
+        if (!config.empty()) {
+            doc.Parse(config.c_str());
+            log_misc("ScreenResize", "existing config file found");
+        }
+        if (!doc.IsObject()) {
+            log_misc("ScreenResize", "clearing out config file");
+            doc.SetObject();
+        }
+
+        // always save under per-game settings
+        std::string root("/sp2x_games/" + eamuse_get_game() + "/");
+
+        log_misc(
+            "ScreenResize",
+            "Game = {}, JSON path = {}",
+            eamuse_get_game(),
+            root);
+
+        // full screen image settings
+        rapidjson::Pointer(root + "offset_x").Set(doc, this->offset_x);
+        rapidjson::Pointer(root + "offset_y").Set(doc, this->offset_y);
+        rapidjson::Pointer(root + "scale_x").Set(doc, this->scale_x);
+        rapidjson::Pointer(root + "scale_y").Set(doc, this->scale_y);
+        rapidjson::Pointer(root + "enable_screen_resize").Set(doc, this->enable_screen_resize);
+        rapidjson::Pointer(root + "enable_linear_filter").Set(doc, this->enable_linear_filter);
+        rapidjson::Pointer(root + "keep_aspect_ratio").Set(doc, this->keep_aspect_ratio);
+        rapidjson::Pointer(root + "centered").Set(doc, this->centered);
+
+        // windowed mode settings
+        rapidjson::Pointer(root + "w_always_on_top").Set(doc, this->window_always_on_top);
+        rapidjson::Pointer(root + "w_enable_resize").Set(doc, this->enable_window_resize);
+        rapidjson::Pointer(root + "w_keep_aspect_ratio").Set(doc, this->client_keep_aspect_ratio);
+        rapidjson::Pointer(root + "w_border_type").Set(doc, this->window_decoration);
+        rapidjson::Pointer(root + "w_width").Set(doc, this->client_width);
+        rapidjson::Pointer(root + "w_height").Set(doc, this->client_height);
+        rapidjson::Pointer(root + "w_offset_x").Set(doc, this->window_offset_x);
+        rapidjson::Pointer(root + "w_offset_y").Set(doc, this->window_offset_y);
+
         // build JSON
-        StringBuffer buffer;
-        Writer<StringBuffer> writer(buffer);
+        rapidjson::StringBuffer buffer;
+        rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
         doc.Accept(writer);
 
         // save to file

@@ -4,6 +4,32 @@
 #include "util/utils.h"
 #include "util/fileutils.h"
 
+#include <fstream>
+
+static const std::vector<std::string> CATEGORY_ORDER_BASIC = {
+    "Game Options",
+    "Common",
+    "Overlay",
+    "Graphics (Common)",
+    "Graphics (Windowed)",
+    "Audio",
+    "SpiceCompanion and API",
+};
+
+static const std::vector<std::string> CATEGORY_ORDER_ADVANCED = {
+    "Game Options (Advanced)",
+    "Network",
+    "Performance",
+    "Miscellaneous",
+    "Paths",
+    "Touch Parameters",
+    "I/O Modules",
+    "Card Readers",
+    "VR",
+    "Development",
+    "SpiceCompanion and API (Advanced)",
+};
+
 /*
  * Option Definitions
  * Be aware that the order must be the same as in the enum launcher::Options!
@@ -31,14 +57,14 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .hidden = true,
     },
     {
-        .title = "EA Emulation",
+        .title = "Basic Local EA Emulation",
         .name = "ea",
-        .desc = "Enables the integrated EA server",
+        .desc = "Enables the integrated local EA server, just enough to boot the game; no card in, no data saving",
         .type = OptionType::Bool,
         .category = "Common",
     },
     {
-        .title = "Service URL",
+        .title = "EA Service URL",
         .name = "url",
         .desc = "Sets a custom service URL override",
         .type = OptionType::Text,
@@ -49,6 +75,7 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .name = "p",
         .desc = "Sets a custom PCBID override",
         .type = OptionType::Text,
+        .setting_name = "04040000000000000000",
         .category = "Common",
         .sensitive = true,
     },
@@ -57,6 +84,7 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .name = "card0",
         .desc = "Set a card number for reader 1. Overrides the selected card file.",
         .type = OptionType::Text,
+        .setting_name = "E004000000000000",
         .category = "Common",
         .sensitive = true,
     },
@@ -65,6 +93,7 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .name = "card1",
         .desc = "Set a card number for reader 2. Overrides the selected card file.",
         .type = OptionType::Text,
+        .setting_name = "E004000000000000",
         .category = "Common",
         .sensitive = true,
     },
@@ -73,13 +102,16 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .name = "w",
         .desc = "Enables windowed mode",
         .type = OptionType::Bool,
-        .category = "Common",
+        .category = "Graphics (Windowed)",
     },
     {
-        .title = "Inject Hook",
+        .title = "Inject DLL Hook",
         .name = "k",
-        .desc = "Injects a hook by using LoadLibrary on the specified file before running the main game code",
+        .desc = "Multiple files are allowed; use multiple -k flags, or in SpiceCfg, separate by "
+                "space (foo.dll bar.dll baz.dll). Injects a hook by using LoadLibrary on the "
+                "specified file before running the main game code",
         .type = OptionType::Text,
+        .setting_name = "a.dll b.dll c.dll",
         .category = "Common",
     },
     {
@@ -87,63 +119,63 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .name = "script",
         .desc = "Executes a script (.lua) at the given path on game boot",
         .type = OptionType::Text,
-        .category = "Common",
+        .category = "Miscellaneous",
     },
     {
-        .title = "Capture Cursor",
+        .title = "Lock Cursor to Window",
         .name = "c",
-        .desc = "Captures the cursor in the game window",
+        .desc = "Confines the cursor to be within the game window",
         .type = OptionType::Bool,
         .category = "Common",
     },
     {
-        .title = "Show Cursor",
+        .title = "Always Show Cursor",
         .name = "s",
         .desc = "Shows the cursor in the game window, useful for games with touch support",
         .type = OptionType::Bool,
         .category = "Common",
     },
     {
-        .title = "Display Adapter",
+        .title = "Monitor",
         .name = "monitor",
         .desc = "Sets the display that the game will be opened in, for multiple monitors",
         .type = OptionType::Integer,
-        .category = "Common",
+        .category = "Graphics (Common)",
     },
     {
-        .title = "Graphics Force Refresh Rate",
+        .title = "Force Refresh Rate",
         .name = "graphics-force-refresh",
         .desc = "Force the refresh rate for the primary graphics window",
         .type = OptionType::Integer,
-        .category = "Miscellaneous",
+        .category = "Graphics (Common)",
     },
     {
-        .title = "Graphics Force Single Adapter",
+        .title = "Only Use One Monitor",
         .name = "graphics-force-single-adapter",
         .desc = "Force the graphics device to be opened utilizing only one adapter in multi-monitor systems",
         .type = OptionType::Bool,
-        .category = "Miscellaneous",
+        .category = "Graphics (Common)",
     },
     {
         .title = "DirectX 9 on 12",
         .name = "9on12",
         .desc = "Use D3D9On12 wrapper library, requires Windows 10 Insider Preview 18956 or later",
         .type = OptionType::Bool,
-        .category = "Miscellaneous",
+        .category = "Graphics (Common)",
     },
     {
         .title = "Disable Win/Media/Special Keys",
         .name = "nolegacy",
         .desc = "Disables legacy key activation in-game",
         .type = OptionType::Bool,
-        .category = "Common",
+        .category = "Miscellaneous",
     },
     {
         .title = "Discord Rich Presence",
         .name = "richpresence",
         .desc = "Enables Discord Rich Presence support",
         .type = OptionType::Bool,
-        .category = "Common",
+        .category = "Miscellaneous",
     },
     {
         .title = "Smart EA",
@@ -220,12 +252,57 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .category = "VR",
     },
     {
-        .title = "Load IIDX Module",
+        .title = "Disable Spice Overlay",
+        .name = "overlaydisable",
+        .desc = "Disables the in-game overlay",
+        .type = OptionType::Bool,
+        .category = "Overlay",
+    },
+    {
+        // spice2x_FpsAutoShow
+        .title = "Auto Show FPS/Clock",
+        .name = "sp2x-autofps",
+        .desc = "Automatically show FPS / clock / timer overlay window when the game starts",
+        .type = OptionType::Bool,
+        .category = "Overlay",
+    },
+    {
+        // spice2x_SubScreenAutoShow
+        .title = "Auto Show Subscreen",
+        .name = "sp2x-autosubscreen",
+        .desc = "Automatically show the subscreen overlay when the game starts, if the game has one",
+        .type = OptionType::Bool,
+        .category = "Overlay",
+    },
+    {
+        // spice2x_IOPanelAutoShow
+        .title = "Auto Show IO Panel",
+        .name = "sp2x-autoiopanel",
+        .desc = "Automatically show I/O panel window when the game starts",
+        .type = OptionType::Bool,
+        .category = "Overlay",
+    },
+    {
+        // spice2x_KeypadAutoShow
+        .title = "Auto Show Keypad",
+        .name = "sp2x-autokeypad",
+        .desc = "Automatically show virtual keypad window when the game starts",
+        .type = OptionType::Enum,
+        .category = "Overlay",
+        .elements = {
+            {"0", "Off"},
+            {"1", "P1"},
+            {"2", "P2"},
+            {"3", "P1 and P2"},
+        },
+    },
+    {
+        .title = "Force Load IIDX Module",
         .name = "iidx",
         .desc = "Manually enable Beatmania IIDX module",
         .type = OptionType::Bool,
         .game_name = "Beatmania IIDX",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
         .title = "IIDX Camera Order Flip",
@@ -233,7 +310,7 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .desc = "Flip the camera order",
         .type = OptionType::Bool,
         .game_name = "Beatmania IIDX",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
         .title = "IIDX Disable Cameras",
@@ -246,15 +323,24 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
     {
         .title = "IIDX Sound Output Device",
         .name = "iidxsounddevice",
-        .desc = "SOUND_OUTPUT_DEVICE environment variable override",
-        .type = OptionType::Text,
+        .desc =
+            "SOUND_OUTPUT_DEVICE environment variable override. Default: auto. "
+            "Auto will use WASAPI, unless -iidxasio is set or if XONAR SOUND CARD is present, then ASIO is used",
+        .type = OptionType::Enum,
         .game_name = "Beatmania IIDX",
         .category = "Game Options",
+        .elements = {
+            {"auto", "Automatic"},
+            {"wasapi", "Windows Audio"},
+            {"asio", "ASIO"},
+        },
     },
     {
         .title = "IIDX ASIO Driver",
         .name = "iidxasio",
-        .desc = "ASIO driver name to use",
+        .desc = "ASIO driver name to use, replacing XONAR SOUND CARD(64). "
+            "String should match registry key under HKLM\\SOFTWARE\\ASIO\\. "
+            "IIDX is very picky about ASIO devices it can support, YMMV",
         .type = OptionType::Text,
         .game_name = "Beatmania IIDX",
         .category = "Game Options",
@@ -265,31 +351,102 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .desc = "Enables BIO2 firmware updates",
         .type = OptionType::Bool,
         .game_name = "Beatmania IIDX",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
         .title = "IIDX TDJ Mode",
         .name =  "iidxtdj",
-        .desc = "Enables TDJ cabinet mode",
+        .desc = "Enables TDJ cabinet mode. Ensure you also set -iidxsounddevice to desired option",
         .type = OptionType::Bool,
         .game_name = "Beatmania IIDX",
         .category = "Game Options",
     },
     {
-        .title = "Load Sound Voltex Module",
+        // spice2x_IIDXDigitalTTSensitivity
+        .title = "IIDX Digital TT Sensitivity",
+        .name = "sp2x-iidxdigitalttsens",
+        .desc = "Adjust sensitivity of turntable when digital input (buttons) is used. Does not affect analog input! Default: 4",
+        .type = OptionType::Integer,
+        .setting_name = "(0-255)",
+        .game_name = "Beatmania IIDX",
+        .category = "Game Options (Advanced)",
+    },
+    {
+        // spice2x_IIDXLDJForce720p
+        .title = "IIDX LDJ Force 720p (HD)",
+        .name = "sp2x-iidxldjforce720p",
+        .desc = "Force Definition Type HD (720p) mode instead of FHD (1080p) for IIDX30+. Only for LDJ! TDJ is always FHD in IIDX30+",
+        .type = OptionType::Bool,
+        .game_name = "Beatmania IIDX",
+        .category = "Game Options (Advanced)",
+    },
+    {
+        // spice2x_IIDXTDJSubSize
+        .title = "IIDX TDJ Subscreen Size",
+        .name = "sp2x-iidxtdjsubsize",
+        .desc = "Default size of the subscreen overlay. Default: medium",
+        .type = OptionType::Enum,
+        .game_name = "Beatmania IIDX",
+        .category = "Overlay",
+        .elements = {
+            {"small", ""},
+            {"medium", ""},
+            {"large", ""},
+            {"fullscreen", ""},
+        },
+    },
+    {
+        // spice2x_IIDXLEDFontSize
+        .title = "IIDX LED Ticker Font Size",
+        .name = "sp2x-iidxledfontsize",
+        .desc = "Configure the font size of the segment display, in pixels. Default: 64 (px)",
+        .type = OptionType::Integer,
+        .game_name = "Beatmania IIDX",
+        .category = "Overlay",
+    },
+    {
+        // spice2x_IIDXLEDColor
+        .title = "IIDX LED Ticker Color",
+        .name = "sp2x-iidxledcolor",
+        .desc = "Configure the font color of the segment display; specify RGB value in hex. "
+                "Default: 0xff0000 (red)",
+        .type = OptionType::Hex,
+        .game_name = "Beatmania IIDX",
+        .category = "Overlay",
+    },
+    {
+        // spice2x_IIDXLEDPos
+        .title = "IIDX LED Ticker Position",
+        .name = "sp2x-iidxledpos",
+        .desc = "Initial position of the segment display. Default: bottom",
+        .type = OptionType::Enum,
+        .game_name = "Beatmania IIDX",
+        .category = "Overlay",
+        .elements = {
+            {"topleft", ""},
+            {"top", ""},
+            {"topright", ""},
+            {"bottomleft", ""},
+            {"bottom", ""},
+            {"bottomright", ""},
+        },
+    },
+    {
+        .title = "Force Load Sound Voltex Module",
         .name = "sdvx",
         .desc = "Manually enable Sound Voltex Module",
         .type = OptionType::Bool,
         .game_name = "Sound Voltex",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
         .title = "SDVX Force 720p",
         .name = "sdvx720",
-        .desc = "Force Sound Voltex 720p display mode",
+        .desc = "Force Sound Voltex 720p display mode, used by older games. "
+            "For newer games, use window resize function instead",
         .type = OptionType::Bool,
         .game_name = "Sound Voltex",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
         .title = "SDVX Printer Emulation",
@@ -297,7 +454,7 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .desc = "Enable Sound Voltex printer emulation",
         .type = OptionType::Bool,
         .game_name = "Sound Voltex",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
         .title = "SDVX Printer Output Path",
@@ -305,7 +462,7 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .desc = "Path to folder where images will be stored",
         .type = OptionType::Text,
         .game_name = "Sound Voltex",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
         .title = "SDVX Printer Output Clear",
@@ -313,7 +470,7 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .desc = "Clean up saved images in the output directory on startup",
         .type = OptionType::Bool,
         .game_name = "Sound Voltex",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
         .title = "SDVX Printer Output Overwrite",
@@ -321,7 +478,7 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .desc = "Always overwrite the same file in output directory",
         .type = OptionType::Bool,
         .game_name = "Sound Voltex",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
         .title = "SDVX Printer Output Format",
@@ -330,7 +487,7 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .type = OptionType::Text,
         .setting_name = "(png/bmp/tga/jpg)",
         .game_name = "Sound Voltex",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
         .title = "SDVX Printer JPG Quality",
@@ -339,7 +496,7 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .type = OptionType::Integer,
         .setting_name = "(0-100)",
         .game_name = "Sound Voltex",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
         .title = "SDVX Disable Cameras",
@@ -353,18 +510,50 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .title = "SDVX Native Touch Handling",
         .name = "sdvxnativetouch",
         .desc = "Disables touch hooks and lets the game access a touch screen directly. "
-                "Requires a touch screen to be connected as a secondary monitor.",
+                "Requires a touch screen to be connected as a secondary monitor. "
+                "Enable this when you get duplicate touch inputs from an actual touch screen",
         .type = OptionType::Bool,
         .game_name = "Sound Voltex",
         .category = "Game Options",
     },
     {
-        .title = "Load DDR Module",
+        // spice2x_SDVXDigitalKnobSensitivity
+        .title = "SDVX Digital Knob Sensitivity",
+        .name = "sp2x-sdvxdigitalknobsens",
+        .desc = "Adjust sensitivity of knobs when digital input (buttons) is used. Does not affect analog input! Default: 16",
+        .type = OptionType::Integer,
+        .setting_name = "(0-255)",
+        .game_name = "Sound Voltex",
+        .category = "Game Options (Advanced)",
+    },
+    {
+        // spice2x_SDVXAsioDriver
+        .title = "SDVX ASIO driver",
+        .name = "sp2x-sdvxasio",
+        .desc = "ASIO driver name to use, replacing XONAR SOUND CARD(64). "
+            "String should match registry key under HLKM\\SOFTWARE\\ASIO\\ "
+            "SDVX is EXTREMELY picky about ASIO devices it can support!",
+        .type = OptionType::Text,
+        .game_name = "Sound Voltex",
+        .category = "Game Options (Advanced)",
+    },
+    {
+        // spice2x_SDVXSubPos
+        .title = "SDVX Subscreen Overlay Position",
+        .name = "sp2x-sdvxsubpos",
+        .desc = "Location for the subscreen overlay. Default: bottom",
+        .type = OptionType::Enum,
+        .game_name = "Sound Voltex",
+        .category = "Overlay",
+        .elements = {{"top", ""}, {"center", ""}, {"bottom", ""}},
+    },
+    {
+        .title = "Force Load DDR Module",
         .name = "ddr",
         .desc = "Manually enable Dance Dance Revolution module",
         .type = OptionType::Bool,
         .game_name = "Dance Dance Revolution",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
         .title = "DDR 4:3 Mode",
@@ -375,12 +564,12 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .category = "Game Options",
     },
     {
-        .title = "Load Pop'n Music Module",
+        .title = "Force Load Pop'n Music Module",
         .name = "pnm",
         .desc = "Manually enable Pop'n Music module",
         .type = OptionType::Bool,
         .game_name = "Pop'n Music",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
         .title = "Pop'n Music Force HD Mode",
@@ -399,20 +588,20 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .category = "Game Options",
     },
     {
-        .title = "Load HELLO! Pop'n Music Module",
+        .title = "Force Load HELLO! Pop'n Music Module",
         .name = "hpm",
         .desc = "Manually enable HELLO! Pop'n Music module",
         .type = OptionType::Bool,
         .game_name = "HELLO! Pop'n Music",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load GitaDora Module",
+        .title = "Force Load GitaDora Module",
         .name = "gd",
         .desc = "Manually enable GitaDora module",
         .type = OptionType::Bool,
         .game_name = "GitaDora",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
         .title = "GitaDora Two Channel Audio",
@@ -425,175 +614,179 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
     {
         .title = "GitaDora Cabinet Type",
         .name = "gdcabtype",
-        .desc = "Manually enable GitaDora module",
+        .desc = "Select cabinet type. DX has more input and lights. Pick SD2 for single player guitar mode on white cab",
         .type = OptionType::Enum,
         .game_name = "GitaDora",
         .category = "Game Options",
-        .elements = {{"0", ""}, {"1", ""}, {"2", ""}, {"3", ""}},
+        .elements = {{"0", "DX (broken?)"}, {"1", "DX"}, {"2", "SD"}, {"3", "SD2 (white cab)"}},
     },
     {
-        .title = "Load Jubeat Module",
+        .title = "Force Load Jubeat Module",
         .name = "jb",
         .desc = "Manually enable Jubeat module",
         .type = OptionType::Bool,
         .game_name = "Jubeat",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Reflec Beat Module",
+        .title = "Force Load Reflec Beat Module",
         .name = "rb",
         .desc = "Manually enable Reflec Beat module",
         .type = OptionType::Bool,
         .game_name = "Reflec Beat",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Tenkaichi Shogikai Module",
+        .title = "Force Load Tenkaichi Shogikai Module",
         .name = "shogikai",
         .desc = "Manually enable Tenkaichi Shogikai module",
         .type = OptionType::Bool,
         .game_name = "Tenkaichi Shogikai",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Beatstream Module",
+        .title = "Force Load Beatstream Module",
         .name = "bs",
         .desc = "Manually enable Beatstream module",
         .type = OptionType::Bool,
         .game_name = "Beatstream",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Nostalgia Module",
+        .title = "Force Load Nostalgia Module",
         .name = "nostalgia",
         .desc = "Manually enable Nostalgia module",
         .type = OptionType::Bool,
         .game_name = "Nostalgia",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Dance Evolution Module",
+        .title = "Force Load Dance Evolution Module",
         .name = "dea",
         .desc = "Manually enable Dance Evolution module",
         .type = OptionType::Bool,
         .game_name = "Dance Evolution",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load FutureTomTom Module",
+        .title = "Force Load FutureTomTom Module",
         .name = "ftt",
         .desc = "Manually enable FutureTomTom module",
         .type = OptionType::Bool,
         .game_name = "FutureTomTom",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load BBC Module",
+        .title = "Force Load BBC Module",
         .name = "bbc",
         .desc = "Manually enable Bishi Bashi Channel module",
         .type = OptionType::Bool,
         .game_name = "Bishi Bashi Channel",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Metal Gear Arcade Module",
+        .title = "Force Load Metal Gear Arcade Module",
         .name = "mga",
         .desc = "Manually enable Metal Gear Arcade module",
         .type = OptionType::Bool,
         .game_name = "Metal Gear",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Quiz Magic Academy Module",
+        .title = "Force Load Quiz Magic Academy Module",
         .name = "qma",
         .desc = "Manually enable Quiz Magic Academy module",
         .type = OptionType::Bool,
         .game_name = "Quiz Magic Academy",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Road Fighters 3D Module",
+        .title = "Force Load Road Fighters 3D Module",
         .name = "rf3d",
         .desc = "Manually enable Road Fighters 3D module",
         .type = OptionType::Bool,
         .game_name = "Road Fighters 3D",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Steel Chronicle Module",
+        .title = "Force Load Steel Chronicle Module",
         .name = "sc",
         .desc = "Manually enable Steel Chronicle module",
         .type = OptionType::Bool,
         .game_name = "Steel Chronicle",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Mahjong Fight Club Module",
+        .title = "Force Load Mahjong Fight Club Module",
         .name = "mfc",
         .desc = "Manually enable Mahjong Fight Club module",
         .type = OptionType::Bool,
         .game_name = "Mahjong Fight Club",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Scotto Module",
+        .title = "Force Load Scotto Module",
         .name = "scotto",
         .desc = "Manually enable Scotto module",
         .type = OptionType::Bool,
         .game_name = "Scotto",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Dance Rush Module",
+        .title = "Force Load Dance Rush Module",
         .name = "dr",
         .desc = "Manually enable Dance Rush module",
         .type = OptionType::Bool,
         .game_name = "DANCERUSH",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Winning Eleven Module",
+        .title = "Force Load Winning Eleven Module",
         .name = "we",
         .desc = "Manually enable Winning Eleven module",
         .type = OptionType::Bool,
         .game_name = "Winning Eleven",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Otoca D'or Module",
+        .title = "Force Load Otoca D'or Module",
         .name = "otoca",
         .desc = "Manually enable Otoca D'or module",
         .type = OptionType::Bool,
         .game_name = "Otoca D'or",
-        .category = "Game Options",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load LovePlus Module",
+        .title = "Force Load LovePlus Module",
         .name = "loveplus",
         .desc = "manually enable LovePlus module",
         .type = OptionType::Bool,
         .game_name = "LovePlus",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Charge Machine Module",
+        .title = "Force Load Charge Machine Module",
         .name = "pcm",
         .desc = "manually enable Charge Machine module",
         .type = OptionType::Bool,
         .game_name = "Charge Machine",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Ongaku Paradise Module",
+        .title = "Force Load Ongaku Paradise Module",
         .name = "onpara",
         .desc = "manually enable Ongaku Paradise module",
         .type = OptionType::Bool,
         .game_name = "Ongaku Paradise",
+        .category = "Game Options (Advanced)",
     },
     {
-        .title = "Load Busou Shinki Module",
+        .title = "Force Load Busou Shinki Module",
         .name = "busou",
         .desc = "manually enable Busou Shinki module",
         .type = OptionType::Bool,
         .game_name = "Busou Shinki: Armored Princess Battle Conductor",
+        .category = "Game Options (Advanced)",
     },
     {
         .title = "Modules Folder Path",
@@ -678,35 +871,35 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .name = "apilogging",
         .desc = "verbose logging of API activity",
         .type = OptionType::Bool,
-        .category = "SpiceCompanion and API",
+        .category = "SpiceCompanion and API (Advanced)",
     },
     {
         .title = "API Serial Port",
         .name = "apiserial",
         .desc = "Serial port the API should be listening on",
         .type = OptionType::Text,
-        .category = "SpiceCompanion and API",
+        .category = "SpiceCompanion and API (Advanced)",
     },
     {
         .title = "API Serial Baud",
         .name = "apiserialbaud",
         .desc = "Baud rate for the serial port",
         .type = OptionType::Integer,
-        .category = "SpiceCompanion and API",
+        .category = "SpiceCompanion and API (Advanced)",
     },
     {
         .title = "API Pretty",
         .name = "apipretty",
         .desc = "Slower, but pretty API output",
         .type = OptionType::Bool,
-        .category = "SpiceCompanion and API",
+        .category = "SpiceCompanion and API (Advanced)",
     },
     {
         .title = "API Debug Mode",
         .name = "apidebug",
         .desc = "Enables API debugging mode",
         .type = OptionType::Bool,
-        .category = "SpiceCompanion and API",
+        .category = "SpiceCompanion and API (Advanced)",
     },
     {
         .title = "Enable All IO Modules",
@@ -758,23 +951,28 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .category = "I/O Modules",
     },
     {
-        .title = "Force WinTouch",
+        .title = "Disable Raw Input Touch",
         .name = "wintouch",
-        .desc = "Forces the use of the WinTouch API over RawInput",
+        .desc = "For touch screen input, disable usage of Raw Input API and instead use "
+                "Win8 Pointer API or Win7 Touch API. Only enable this if you have trouble "
+                "using the default (raw input) touch input, as Raw Input performs better",
         .type = OptionType::Bool,
         .category = "Touch Parameters",
     },
     {
         .title = "Force Touch Emulation",
         .name = "touchemuforce",
-        .desc = "Force touch emulation",
+        .desc = "Force enable hook for GetTouchInputInfo API and inject WM_TOUCH events. "
+                "This is automatically turned on when needed, so it is not typically required to "
+                "turn it on manually. Do not enable this unless you have trouble",
         .type = OptionType::Bool,
         .category = "Touch Parameters",
     },
     {
-        .title = "Invert Touch Coordinates",
+        .title = "Invert Raw Input Touch",
         .name = "touchinvert",
-        .desc = "Inverts raw touch positions",
+        .desc = "Inverts raw touch coordinates; only works for default raw input handler, "
+                "and not Windows Touch API",
         .type = OptionType::Bool,
         .category = "Touch Parameters",
     },
@@ -825,6 +1023,7 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .name = "scardflip",
         .desc = "Flips the order of detection for P1/P2",
         .type = OptionType::Bool,
+        .category = "Card Readers",
     },
     {
         .title = "HID SmartCard Order Toggle",
@@ -852,14 +1051,39 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .name = "realtime",
         .desc = "Sets the process priority to realtime, can help with odd lag spikes",
         .type = OptionType::Bool,
-        .category = "Miscellaneous",
+        .hidden = true,
+        .category = "Performance",
+    },
+    {
+        // spice2x_ProcessPriority
+        .title = "Process Priority",
+        .name = "sp2x-processpriority",
+        .desc = "Sets the process priority, can help with odd lag spikes. Default: high",
+        .type = OptionType::Enum,
+        .category = "Performance",
+        .elements = {
+            {"belownormal", ""},
+            {"normal", ""},
+            {"abovenormal", ""},
+            {"high", ""},
+            {"realtime", ""}
+        },
+    },
+    {
+        // spice2x_ProcessAffinity
+        .title = "Process Affinity",
+        .name = "sp2x-processaffinity",
+        .desc = "Set process affinity by calling SetProcessAffinityMask. "
+                "Must provide a hexadecimal mask (e.g., 0x1ff00)",
+        .type = OptionType::Hex,
+        .category = "Performance",
     },
     {
         .title = "Heap Size",
         .name = "h",
         .desc = "Custom heap size in bytes",
         .type = OptionType::Integer,
-        .category = "Miscellaneous",
+        .category = "Performance",
     },
     // TODO: remove this and create an ignore list
     {
@@ -868,49 +1092,53 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .desc = "Broken feature that was not implemented correctly",
         .type = OptionType::Bool,
         .hidden = true,
-        .category = "Miscellaneous",
+        .category = "Graphics (Common)",
     },
     {
-        .title = "Disable Overlay",
-        .name = "overlaydisable",
-        .desc = "Disables the in-game overlay",
-        .type = OptionType::Bool,
-        .category = "Miscellaneous",
-    },
-    {
-        .title = "Disable Audio Hooks",
+        .title = "Disable Spice Audio Hook",
         .name = "audiohookdisable",
         .desc = "Disables audio device initialization hooks",
         .type = OptionType::Bool,
-        .category = "Miscellaneous",
+        .category = "Audio",
     },
     {
-        .title = "Audio Backend",
+        .title = "Spice Audio Hook Backend",
         .name = "audiobackend",
-        .desc = "Selects the audio backend to use",
+        .desc = "Selects the audio backend to use when spice audio hook is enabled. "
+            "Game must be outputting to WASAPI Exclusive mode for audio hook to work.",
         .type = OptionType::Enum,
-        .category = "Miscellaneous",
+        .category = "Audio",
         .elements = {{"asio", "ASIO"}, {"waveout", "waveOut"}},
     },
     {
-        .title = "ASIO Driver ID",
+        .title = "Spice Audio Hook ASIO Driver ID",
         .name = "asiodriverid",
-        .desc = "Selects the ASIO driver id to use",
+        .desc = "Selects the ASIO driver id to use when Spice Audio Backend is set to ASIO",
         .type = OptionType::Integer,
-        .category = "Miscellaneous",
+        .category = "Audio",
     },
     {
         .title = "WASAPI Dummy Context",
         .name = "audiodummy",
         .desc = "Uses a dummy `IAudioClient` context to maintain full audio control",
         .type = OptionType::Bool,
-        .category = "Miscellaneous",
+        .category = "Audio",
     },
     {
+        // DelayBy5Seconds
         .title = "Delay by 5 Seconds",
         .name = "sleep",
         .desc = "Waits five seconds before starting the game",
         .type = OptionType::Bool,
+        .hidden = true, // superseded by sp2x-sleep_duration
+        .category = "Miscellaneous",
+    },
+    {
+        // spice2x_DelayByNSeconds
+        .title = "Delay Game Launch",
+        .name = "sp2x-sleepduration",
+        .desc = "Wait for N seconds before starting the game",
+        .type = OptionType::Integer,
         .category = "Miscellaneous",
     },
     {
@@ -923,16 +1151,31 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
     {
         .title = "Adjust Display Orientation",
         .name = "adjustorientation",
-        .desc = "Automatically adjust the orientation of your display in portrait games",
+        .desc = "Automatically adjust the orientation of your display in portrait games. "
+                "WARNING: game may launch at incorrect refresh rate! Use in combination with "
+                "-graphics-force-refresh flag to fix.",
         .type = OptionType::Bool,
-        .category = "Miscellaneous",
+        .hidden = true, // superseded by sp2x-autoorientation
+        .category = "Graphics (Common)",
+    },
+    {
+        // spice2x_AutoOrientation
+        .title = "Auto-rotate Display",
+        .name = "sp2x-autoorientation",
+        .desc = "Automatically adjust the orientation of your display when launched. "
+                "WARNING: game may launch at incorrect refresh rate! Use in combination with "
+                "-graphics-force-refresh and potentially -9on12 to fix.",
+        .type = OptionType::Enum,
+        .category = "Graphics (Common)",
+        // match graphics_orientation
+        .elements = {{"0", "90 (CW)"}, {"1", "270 (CCW)"}},
     },
     {
         .title = "Log Level",
         .name = "loglevel",
         .desc = "Set the level of detail that gets written to the log",
         .type = OptionType::Enum,
-        .category = "Miscellaneous",
+        .category = "Performance",
         .elements = {{"fatal", ""}, {"warning", ""}, {"info", ""}, {"misc", ""}, {"all", ""}, {"disable", ""}},
     },
     {
@@ -1026,7 +1269,86 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .type = OptionType::Bool,
         .category = "Development",
     },
+    {
+        // spice2x_LightsOverallBrightness
+        .title = "Lights Brightness Adjustment",
+        .name = "sp2x-lights-brightness",
+        .desc = "Modify HID output values, measured in %. Default is 100. "
+                "Requires compatible hardware, not just any LED",
+        .type = OptionType::Integer,
+        .setting_name = "(0-255)",
+        .category = "Miscellaneous",
+    },
+    {
+        // spice2x_WindowBorder
+        .title = "Window Border Style",
+        .name = "sp2x-windowborder",
+        .desc = "For windowed mode: overrides window border style. "
+            "Does not work for all games; can possibly make the game crash! "
+            "Can also be changed in Screen Resize window (default F11)",
+        .type = OptionType::Enum,
+        .category = "Graphics (Windowed)",
+        // match cfg::WindowDecorationMode
+        .elements = {
+            {"0", "default"},
+            {"1", "borderless"},
+            {"2", "resizable window"},
+        },
+    },
+    {
+        // spice2x_WindowSize
+        .title = "Window Size",
+        .name = "sp2x-windowsize",
+        .desc = "For windowed mode: override for window size, width and height separated by comma. "
+            "Can also be changed in Screen Resize window (default F11)",
+        .type = OptionType::Text,
+        .setting_name = "1280,720",
+        .category = "Graphics (Windowed)",
+    },
+    {
+        // spice2x_WindowPosition
+        .title = "Window Position",
+        .name = "sp2x-windowpos",
+        .desc = "For windowed mode: override for window position, x and y separated by comma. "
+            "Can also be changed in Screen Resize window (default F11)",
+        .type = OptionType::Text,
+        .setting_name = "120,240",
+        .category = "Graphics (Windowed)",
+    },
+    {
+        // spice2x_WindowAlwaysOnTop
+        .title = "Window Always on Top",
+        .name = "sp2x-windowalwaysontop",
+        .desc = "For windowed mode: make window to be always on top of other windows. "
+            "Can also be changed in Screen Resize window (default F11)",
+        .type = OptionType::Bool,
+        .category = "Graphics (Windowed)",
+    },
+    {
+        // spice2x_JubeatLegacyTouch
+        .title = "Legacy Touch Targets",
+        .name = "sp2x-jubeatlegacytouch",
+        .desc = "For touch screen players - use the legacy & less accurate grid-based layout for touch recognition, "
+            "instead of the new & more accurate touch targets. Default: off",
+        .type = OptionType::Bool,
+        .game_name = "Jubeat",
+        .category = "Game Options",
+    },
+    {
+        // spice2x_RBTouchScale
+        .title = "Scale Touch Input",
+        .name = "sp2x-rbscaletouch",
+        .desc = "Apply scaling to make touch area smaller than the screen. "
+            "Specify a number out of 1000 (e.g., 800 means 80%). Default: 1000",
+        .type = OptionType::Integer,
+        .game_name = "Reflec Beat",
+        .category = "Game Options",
+    },
 };
+
+const std::vector<std::string> &launcher::get_categories(bool advanced) {
+    return advanced ? CATEGORY_ORDER_ADVANCED : CATEGORY_ORDER_BASIC;
+}
 
 const std::vector<OptionDefinition> &launcher::get_option_definitions() {
     return OPTION_DEFINITIONS;
@@ -1081,6 +1403,19 @@ std::unique_ptr<std::vector<Option>> launcher::parse_options(int argc, char *arg
                             }
                             break;
                         }
+                        case OptionType::Hex: {
+                            if (++i >= argc) {
+                                log_fatal("options", "missing parameter for -{}", alias);
+                            } else {
+                                // validate it is an integer
+                                try {
+                                    std::stoull(argv[i], nullptr, 16);
+                                } catch (const std::exception &ex) {
+                                    log_fatal("options", "parameter for -{} is not a hex number: {}", alias, argv[i]);
+                                }
+                            }
+                            break;
+                        }
                         case OptionType::Enum:
                         case OptionType::Text: {
                             if (++i >= argc) {
@@ -1127,6 +1462,7 @@ std::unique_ptr<std::vector<Option>> launcher::parse_options(int argc, char *arg
                         case OptionType::Bool:
                             break;
                         case OptionType::Integer:
+                        case OptionType::Hex:
                         case OptionType::Text:
                         case OptionType::Enum:
                             i++;
@@ -1324,7 +1660,41 @@ launcher::GameVersion launcher::detect_gameversion(const std::string &ea3_user) 
     tinyxml2::XMLDocument ea3_config;
     if (ea3_config.LoadFile(ea3_path.c_str()) != tinyxml2::XML_SUCCESS) {
         log_warning("options", "unable to parse {}", ea3_path);
-        return detect_gameversion_ident();
+        log_warning("options", "trying again with improper XML header removed...");
+
+        // below: dirty hack to deal with bad ea3 xml file with comments in the beginning
+        // https://stackoverflow.com/questions/19100408/tinyxml-any-way-to-skip-problematic-doctype-tag
+
+        // Open the file and read it into a vector
+        std::ifstream ifs(ea3_path.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
+        std::ifstream::pos_type fsize = ifs.tellg();
+        ifs.seekg(0, std::ios::beg);
+        std::vector<char> bytes(fsize);
+        ifs.read(&bytes[0], fsize);
+
+        // Create string from vector
+        std::string xml_str(&bytes[0], fsize);
+
+        // Skip unsupported statements
+        size_t pos = 0;
+        while (true) {
+            pos = xml_str.find_first_of("<", pos);
+            if (xml_str[pos + 1] == '?' || // <?xml...
+                xml_str[pos + 1] == '!') { // <!DOCTYPE... or [<!ENTITY...
+                // Skip this line
+                pos = xml_str.find_first_of("\n", pos);
+            } else
+                break;
+        }
+        xml_str = xml_str.substr(pos);
+
+        // replace with fixed one
+        ea3_config.Clear();
+        if (ea3_config.Parse(xml_str.c_str()) != tinyxml2::XML_SUCCESS) {
+            // if we still failed, give up
+            log_warning("options", "unable to parse fixed xml");
+            return detect_gameversion_ident();
+        }
     }
 
     // find model string

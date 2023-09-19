@@ -1,3 +1,5 @@
+.vscode/*
+
 # JetBrains IDEs
 .idea
 .idea_modules
@@ -13,3 +15,5 @@ build_docker.local.sh
 # output from build script
 bin/*
 dist/*
+
+external/cv2pdb/*

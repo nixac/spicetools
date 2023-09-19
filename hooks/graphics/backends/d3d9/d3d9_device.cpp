@@ -716,35 +716,55 @@ void SurfaceHook(IDirect3DDevice9 *pReal) {
 
     const int rectLeft = 1024;
     const int rectTop = 576;
+    const int w = param.BackBufferWidth;
+    const int h = param.BackBufferHeight;
     D3DLOCKED_RECT rect;
 
     RECT targetRect {
-        rectLeft, rectTop,
-        (LONG) (rectLeft+param.BackBufferWidth),
-        (LONG) (rectTop+param.BackBufferHeight),
+        rectLeft,
+        rectTop,
+        (LONG)(rectLeft + w),
+        (LONG)(rectTop + h),
     };
 
+    // stretch to add top/left offset to avoid going negative
     topSurface->LockRect(&rect, NULL, D3DLOCK_DONOTWAIT);
-    auto hr = pReal->StretchRect(backbuffer, nullptr, topSurface,
-        &targetRect, D3DTEXF_LINEAR);
+    auto hr = pReal->StretchRect(
+        backbuffer, nullptr,
+        topSurface, &targetRect,
+        D3DTEXF_LINEAR);
 
     if (hr != D3D_OK) {
         log_misc("graphics::d3d9", "StretchRect backbuffer failed");
     }
     topSurface->UnlockRect();
 
-    targetRect.left -= cfg::SCREENRESIZE->offset_x;
-    targetRect.top += cfg::SCREENRESIZE->offset_y;
-    targetRect.right = -cfg::SCREENRESIZE->offset_x;
-    targetRect.right += (param.BackBufferWidth+rectLeft) / cfg::SCREENRESIZE->scale_x;
-    targetRect.bottom = cfg::SCREENRESIZE->offset_y;
-    targetRect.bottom += (param.BackBufferHeight+rectTop) / cfg::SCREENRESIZE->scale_y;
+    // do the actual zoom / offset math
+    if (cfg::SCREENRESIZE->centered) {
+        targetRect.right = (w + rectLeft) / cfg::SCREENRESIZE->scale_x;
+        targetRect.bottom = (h + rectTop) / cfg::SCREENRESIZE->scale_y;
+        const LONG deltaH = ((targetRect.bottom - targetRect.top) - h) / 2;
+        const LONG deltaW = ((targetRect.right - targetRect.left) - w) / 2;
+        targetRect.top -= deltaH;
+        targetRect.bottom -= deltaH;
+        targetRect.left -= deltaW;
+        targetRect.right -= deltaW;
+    } else {
+        targetRect.left -= cfg::SCREENRESIZE->offset_x;
+        targetRect.top += cfg::SCREENRESIZE->offset_y;
+        targetRect.right = -cfg::SCREENRESIZE->offset_x;
+        targetRect.right += (w + rectLeft) / cfg::SCREENRESIZE->scale_x;
+        targetRect.bottom = cfg::SCREENRESIZE->offset_y;
+        targetRect.bottom += (h + rectTop) / cfg::SCREENRESIZE->scale_y;
+    }
 
+    // draw to back buffer
     backbuffer->LockRect(&rect, NULL, D3DLOCK_DONOTWAIT);
-    hr = pReal->StretchRect(topSurface, &targetRect, backbuffer,
-        nullptr, cfg::SCREENRESIZE->enable_linear_filter ? D3DTEXF_LINEAR : D3DTEXF_NONE);
+    hr = pReal->StretchRect(
+        topSurface, &targetRect,
+        backbuffer, nullptr,
+        cfg::SCREENRESIZE->enable_linear_filter ? D3DTEXF_LINEAR : D3DTEXF_NONE);
     backbuffer->UnlockRect();
-
     if (hr != D3D_OK) {
         log_misc("graphics::d3d9", "StretchRect targetRect failed");
     }

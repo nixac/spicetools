@@ -78,6 +78,7 @@
 #include "misc/wintouchemu.h"
 #include "overlay/overlay.h"
 #include "overlay/windows/patch_manager.h"
+#include "overlay/windows/iidx_seg.h"
 #include "rawinput/rawinput.h"
 #include "rawinput/touch.h"
 #include "reader/reader.h"
@@ -203,7 +204,7 @@ int main_implementation(int argc, char *argv[]) {
     bool load_stubs = false;
     bool netfix_disable = false;
     bool lang_disable = false;
-    bool realtime = false;
+    std::string process_priority_str = "high";
     bool cardio_enabled = false;
     bool peb_print = false;
     bool cfg_run = false;
@@ -258,18 +259,20 @@ int main_implementation(int argc, char *argv[]) {
     if (options[launcher::Options::ConfigurationPath].is_active()) {
         CONFIG_PATH_OVERRIDE = options[launcher::Options::ConfigurationPath].value_text();
     }
-    if (options[launcher::Options::EAmusementEmulation].value_bool()
-    && (options[launcher::Options::ServiceURL].is_active())) {
-        log_warning("launcher", "-------------------------------------------------------------------");
-        log_warning("launcher", "WARNING - WARNING - WARNING - WARNING - WARNING - WARNING - WARNING");
-        log_warning("launcher", "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-        log_warning("launcher", "A service URL is set **AND** E-Amusement emulation is enabled.");
-        log_warning("launcher", "Either remove the service URL, or disable E-Amusement emulation.");
-        log_warning("launcher", "Otherwise you may experience problems logging in.");
-        log_warning("launcher", "-------------------------------------------------------------------");
-        if (!cfg::CONFIGURATOR_STANDALONE) {
-            Sleep(3000);
-        }
+    if (options[launcher::Options::EAmusementEmulation].value_bool() &&
+        options[launcher::Options::ServiceURL].is_active() &&
+        !cfg::CONFIGURATOR_STANDALONE) {
+        log_fatal(
+            "launcher",
+            "BAD EAMUSE SETTINGS ERROR\n\n\n"
+            "-------------------------------------------------------------------\n"
+            "WARNING - WARNING - WARNING - WARNING - WARNING - WARNING - WARNING\n"
+            "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+            "A service URL is set **AND** E-Amusement emulation is enabled.\n"
+            "Either remove the service URL, or disable E-Amusement emulation.\n"
+            "Otherwise you may experience problems logging in.\n"
+            "-------------------------------------------------------------------\n\n\n"
+            );
     }
     if (options[launcher::Options::EAmusementEmulation].value_bool()) {
         avs::ea3::URL_SLASH = 1;
@@ -279,19 +282,19 @@ int main_implementation(int argc, char *argv[]) {
         easrv_smart = true;
     }
     if (options[launcher::Options::EAmusementMaintenance].is_active()) {
-        easrv_maint = options[launcher::Options::EAmusementMaintenance].value_int() > 0;
+        easrv_maint = options[launcher::Options::EAmusementMaintenance].value_uint32() > 0;
     }
     if (options[launcher::Options::WindowedMode].value_bool()) {
         GRAPHICS_WINDOWED = true;
     }
     if (options[launcher::Options::GraphicsForceRefresh].is_active()) {
-        GRAPHICS_FORCE_REFRESH = options[launcher::Options::GraphicsForceRefresh].value_int();
+        GRAPHICS_FORCE_REFRESH = options[launcher::Options::GraphicsForceRefresh].value_uint32();
     }
     if (options[launcher::Options::GraphicsForceSingleAdapter].value_bool()) {
         GRAPHICS_FORCE_SINGLE_ADAPTER = true;
     }
     if (options[launcher::Options::DisplayAdapter].is_active()) {
-        D3D9_ADAPTER = options[launcher::Options::DisplayAdapter].value_int();
+        D3D9_ADAPTER = options[launcher::Options::DisplayAdapter].value_uint32();
     }
     if (options[launcher::Options::CaptureCursor].value_bool()) {
         GRAPHICS_CAPTURE_CURSOR = true;
@@ -305,14 +308,22 @@ int main_implementation(int argc, char *argv[]) {
     if (options[launcher::Options::VerboseAVSLogging].value_bool()) {
         hooks::avs::config::LOG = true;
     }
-    if (options[launcher::Options::AdjustOrientation].value_bool()) {
-        GRAPHICS_ADJUST_ORIENTATION = true;
+    if (options[launcher::Options::spice2x_AutoOrientation].is_active()) {
+        GRAPHICS_ADJUST_ORIENTATION =
+            (graphics_orientation)options[launcher::Options::spice2x_AutoOrientation].value_uint32();
+    } else if (options[launcher::Options::AdjustOrientation].value_bool()) {
+        GRAPHICS_ADJUST_ORIENTATION = ORIENTATION_CW;
     }
     if (options[launcher::Options::LogLevel].is_active()) {
         avs::core::LOG_LEVEL_CUSTOM = options[launcher::Options::LogLevel].value_text();
     }
     for (auto &hook : options[launcher::Options::InjectHook].values_text()) {
-        game_hooks.push_back(hook);
+        std::string buffer;
+        std::stringstream stream(hook);
+        std::vector<std::string> tokens;
+        while (stream >> buffer) {
+            game_hooks.push_back(buffer);
+        }
     }
     if (options[launcher::Options::LoadStubs].value_bool()) {
         load_stubs = true;
@@ -347,6 +358,21 @@ int main_implementation(int argc, char *argv[]) {
     if (options[launcher::Options::SDVXNativeTouch].value_bool()) {
         games::sdvx::NATIVETOUCH = true;
     }
+    if (options[launcher::Options::spice2x_SDVXDigitalKnobSensitivity].is_active()) {
+        games::sdvx::DIGITAL_KNOB_SENS = (uint8_t)
+            options[launcher::Options::spice2x_SDVXDigitalKnobSensitivity].value_uint32();
+    }
+    if (options[launcher::Options::spice2x_SDVXAsioDriver].is_active()) {
+        games::sdvx::ASIO_DRIVER = options[launcher::Options::spice2x_SDVXAsioDriver].value_text();
+    }
+    if (options[launcher::Options::spice2x_SDVXSubPos].is_active()) {
+        auto txt = options[launcher::Options::spice2x_SDVXSubPos].value_text();
+        if (txt == "top") {
+            games::sdvx::OVERLAY_POS = games::sdvx::SDVX_OVERLAY_TOP;
+        } else if (txt == "center") {
+            games::sdvx::OVERLAY_POS = games::sdvx::SDVX_OVERLAY_MIDDLE;
+        }
+    }
     if (options[launcher::Options::LoadIIDXModule].value_bool()) {
         attach_iidx = true;
     }
@@ -364,6 +390,29 @@ int main_implementation(int argc, char *argv[]) {
     }
     if (options[launcher::Options::IIDXTDJMode].value_bool()) {
         games::iidx::TDJ_MODE = true;
+    }
+    if (options[launcher::Options::spice2x_IIDXDigitalTTSensitivity].is_active()) {
+        games::iidx::DIGITAL_TT_SENS = (uint8_t)
+            options[launcher::Options::spice2x_IIDXDigitalTTSensitivity].value_uint32();
+    }
+    if (options[launcher::Options::spice2x_IIDXLDJForce720p].value_bool()) {
+        games::iidx::FORCE_720P = true;
+    }
+    if (options[launcher::Options::spice2x_IIDXTDJSubSize].is_active()) {
+        games::iidx::SUBSCREEN_OVERLAY_SIZE =
+            options[launcher::Options::spice2x_IIDXTDJSubSize].value_text();
+    }
+    if (options[launcher::Options::spice2x_IIDXLEDFontSize].is_active()) {
+        overlay::windows::IIDX_SEGMENT_FONT_SIZE =
+            options[launcher::Options::spice2x_IIDXLEDFontSize].value_uint32();
+    }
+    if (options[launcher::Options::spice2x_IIDXLEDColor].is_active()) {
+        overlay::windows::IIDX_SEGMENT_FONT_COLOR =
+            options[launcher::Options::spice2x_IIDXLEDColor].value_hex64();
+    }
+    if (options[launcher::Options::spice2x_IIDXLEDPos].is_active()) {
+        overlay::windows::IIDX_SEGMENT_LOCATION =
+            options[launcher::Options::spice2x_IIDXLEDPos].value_text();
     }
     if (options[launcher::Options::LoadJubeatModule].value_bool()) {
         attach_jb = true;
@@ -393,7 +442,7 @@ int main_implementation(int argc, char *argv[]) {
         attach_gitadora = true;
     }
     if (options[launcher::Options::GitaDoraCabinetType].is_active()) {
-        games::gitadora::CAB_TYPE = options[launcher::Options::GitaDoraCabinetType].value_int();
+        games::gitadora::CAB_TYPE = options[launcher::Options::GitaDoraCabinetType].value_uint32();
     }
     if (options[launcher::Options::LoadNostalgiaModule].value_bool()) {
         attach_nostalgia = true;
@@ -492,25 +541,27 @@ int main_implementation(int argc, char *argv[]) {
         games::shared::PRINTER_FORMAT.push_back(path);
     }
     if (options[launcher::Options::SDVXPrinterJPGQuality].is_active()) {
-        games::shared::PRINTER_JPG_QUALITY = options[launcher::Options::SDVXPrinterJPGQuality].value_int();
+        games::shared::PRINTER_JPG_QUALITY = options[launcher::Options::SDVXPrinterJPGQuality].value_uint32();
     }
     if (options[launcher::Options::SDVXPrinterOutputClear].value_bool()) {
         games::shared::PRINTER_CLEAR = true;
     }
     if (options[launcher::Options::HTTP11].is_active()) {
-        avs::ea3::HTTP11 = options[launcher::Options::HTTP11].value_int();
+        avs::ea3::HTTP11 = options[launcher::Options::HTTP11].value_uint32();
     }
     if (options[launcher::Options::DisableSSL].value_bool()) {
         ssl_disable = true;
     }
     if (options[launcher::Options::URLSlash].is_active()) {
-        avs::ea3::URL_SLASH = options[launcher::Options::URLSlash].value_int();
+        avs::ea3::URL_SLASH = options[launcher::Options::URLSlash].value_uint32();
     }
-    if (options[launcher::Options::RealtimeProcessPriority].value_bool()) {
-        realtime = true;
+    if (options[launcher::Options::spice2x_ProcessPriority].is_active()) {
+        process_priority_str = options[launcher::Options::spice2x_ProcessPriority].value_text();
+    } else if (options[launcher::Options::RealtimeProcessPriority].value_bool()) {
+        process_priority_str = "realtime";
     }
     if (options[launcher::Options::HeapSize].is_active()) {
-        user_heap_size = options[launcher::Options::HeapSize].value_int();
+        user_heap_size = options[launcher::Options::HeapSize].value_uint32();
     }
     if (options[launcher::Options::DisableAvsVfsDriveMountRedirection].is_active()) {
         hooks::avs::config::DISABLE_VFS_DRIVE_REDIRECTION = true;
@@ -603,7 +654,7 @@ int main_implementation(int argc, char *argv[]) {
     }
     if (options[launcher::Options::APITCPPort].is_active()) {
         api_enable = true;
-        api_port = options[launcher::Options::APITCPPort].value_int();
+        api_port = options[launcher::Options::APITCPPort].value_uint32();
     }
     if (options[launcher::Options::APIPassword].is_active()) {
         api_pass = options[launcher::Options::APIPassword].value_text();
@@ -612,7 +663,7 @@ int main_implementation(int argc, char *argv[]) {
         api_serial_port.push_back(options[launcher::Options::APISerialPort].value_text());
     }
     if (options[launcher::Options::APISerialBaud].is_active()) {
-        api_serial_baud.push_back(options[launcher::Options::APISerialBaud].value_int());
+        api_serial_baud.push_back(options[launcher::Options::APISerialBaud].value_uint32());
     }
     if (options[launcher::Options::APIPretty].value_bool()) {
         api_pretty = true;
@@ -675,7 +726,7 @@ int main_implementation(int argc, char *argv[]) {
         hooks::audio::BACKEND = backend;
     }
     if (options[launcher::Options::AsioDriverId].is_active()) {
-        hooks::audio::ASIO_DRIVER_ID = options[launcher::Options::AsioDriverId].value_int();
+        hooks::audio::ASIO_DRIVER_ID = options[launcher::Options::AsioDriverId].value_uint32();
     }
     if (options[launcher::Options::AudioDummy].value_bool()) {
         hooks::audio::USE_DUMMY = true;
@@ -699,6 +750,51 @@ int main_implementation(int argc, char *argv[]) {
     if (options[launcher::Options::GameExecutable].is_active()) {
         avs::game::DLL_NAME = options[launcher::Options::GameExecutable].value_text();
     }
+    if (options[launcher::Options::spice2x_LightsOverallBrightness].is_active()) {
+        rawinput::HID_LIGHT_BRIGHTNESS =
+            (uint8_t)options[launcher::Options::spice2x_LightsOverallBrightness].value_uint32();
+    }
+    if (options[launcher::Options::spice2x_FpsAutoShow].value_bool()) {
+        overlay::AUTO_SHOW_FPS = true;
+    }
+    if (options[launcher::Options::spice2x_SubScreenAutoShow].value_bool()) {
+        overlay::AUTO_SHOW_SUBSCREEN = true;
+    }
+    if (options[launcher::Options::spice2x_IOPanelAutoShow].value_bool()) {
+        overlay::AUTO_SHOW_IOPANEL = true;
+    }
+    if (options[launcher::Options::spice2x_KeypadAutoShow].is_active()) {
+        auto s = options[launcher::Options::spice2x_KeypadAutoShow].value_uint32();
+        switch (s) {
+            case 1:
+                overlay::AUTO_SHOW_KEYPAD_P1 = true;
+                break;
+            case 2:
+                overlay::AUTO_SHOW_KEYPAD_P2 = true;
+                break;
+            case 3:
+                overlay::AUTO_SHOW_KEYPAD_P1 = true;
+                overlay::AUTO_SHOW_KEYPAD_P2 = true;
+                break;
+        } 
+    }
+    if (options[launcher::Options::spice2x_WindowBorder].is_active()) {
+        GRAPHICS_WINDOW_STYLE = options[launcher::Options::spice2x_WindowBorder].value_uint32();
+    }
+    if (options[launcher::Options::spice2x_WindowSize].is_active()) {
+        GRAPHICS_WINDOW_SIZE = options[launcher::Options::spice2x_WindowSize].value_text();
+    }
+    if (options[launcher::Options::spice2x_WindowPosition].is_active()) {
+        GRAPHICS_WINDOW_POS = options[launcher::Options::spice2x_WindowPosition].value_text();
+    }
+    GRAPHICS_WINDOW_ALWAYS_ON_TOP = options[launcher::Options::spice2x_WindowAlwaysOnTop].value_bool();
+
+    if (options[launcher::Options::spice2x_JubeatLegacyTouch].value_bool()) {
+        games::jb::TOUCH_LEGACY_BOX = true;
+    }
+    if (options[launcher::Options::spice2x_RBTouchScale].is_active()) {
+        games::rb::TOUCH_SCALING = options[launcher::Options::spice2x_RBTouchScale].value_uint32();
+    }
 
     // API debugging
     if (api_debug && !cfg::CONFIGURATOR_STANDALONE) {
@@ -717,23 +813,32 @@ int main_implementation(int argc, char *argv[]) {
     }
 
     // delay
-    if (!cfg::CONFIGURATOR_STANDALONE &&
-            (options[launcher::Options::DelayBy5Seconds].value_bool()))
-    {
-        log_info("launcher", "delay by 5000ms...");
-        Sleep(5000);
-    }
+    if (!cfg::CONFIGURATOR_STANDALONE) {
+        DWORD delayInSeconds = 0;
+        if (options[launcher::Options::spice2x_DelayByNSeconds].is_active()) {
+            delayInSeconds = (DWORD)options[launcher::Options::spice2x_DelayByNSeconds].value_uint32();
+        } else if (options[launcher::Options::DelayBy5Seconds].value_bool()) {
+            delayInSeconds = 5;
+        }
 
+        if (0 < delayInSeconds) {
+            log_info("launcher", "delay by {}ms...", delayInSeconds * 1000);
+            Sleep(delayInSeconds * 1000);
+        }
+    }
+    
     // create log file
+    // configurator does not write a log file because it tends to cause the
+    // config file to be corrupt...
     if (!cfg::CONFIGURATOR_STANDALONE) {
         avs::core::create_log();
     }
 
     // log
 #ifdef SPICE64
-    log_info("launcher", "SpiceTools Bootstrap (x64)");
+    log_info("launcher", "SpiceTools Bootstrap (x64) (spice2x)");
 #else
-    log_info("launcher", "SpiceTools Bootstrap (x32)");
+    log_info("launcher", "SpiceTools Bootstrap (x32) (spice2x)");
 #endif
     log_info("launcher", "{}", VERSION_STRING);
 
@@ -772,13 +877,64 @@ int main_implementation(int argc, char *argv[]) {
     }
 
     // set process priority
-    if (!SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS)) {
-        log_warning("launcher", "could not set process priority to high: {}", GetLastError());
+    if (!cfg::CONFIGURATOR_STANDALONE) {
+        DWORD process_priority = HIGH_PRIORITY_CLASS;
+        if (process_priority_str == "belownormal") {
+            process_priority = BELOW_NORMAL_PRIORITY_CLASS;
+        } else if (process_priority_str == "normal") {
+            process_priority = NORMAL_PRIORITY_CLASS;
+        } else if (process_priority_str == "abovenormal") {
+            process_priority = ABOVE_NORMAL_PRIORITY_CLASS;
+        // high is the default so it's skipped!
+        } else if (process_priority_str == "realtime") {
+            process_priority = REALTIME_PRIORITY_CLASS;
+        }
+        // while testing, realtime only worked when being set to high before
+        if (process_priority == REALTIME_PRIORITY_CLASS) {
+            if (!SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS)) {
+                log_warning(
+                    "launcher",
+                    "could not set process priority to high, GLE:{}",
+                    GetLastError());
+            }
+        }
+        if (!SetPriorityClass(GetCurrentProcess(), process_priority)) {
+            log_warning(
+                "launcher",
+                "could not set process priority to {}, GLE:{}",
+                process_priority_str, GetLastError());
+        } else {
+            log_info(
+                "launcher",
+                "SetPriorityClass succeeded, set priority to {}",
+                process_priority_str);
+        }
     }
-    if (realtime) {
-        // while testing, realtime only worked when being set to high before, so this is fine
-        if (!SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS)) {
-            log_warning("launcher", "could not set process priority to realtime: {}", GetLastError());
+
+    // set process affinity
+    if (!cfg::CONFIGURATOR_STANDALONE &&
+        options[launcher::Options::spice2x_ProcessAffinity].is_active()) {
+        uint64_t affinity = options[launcher::Options::spice2x_ProcessAffinity].value_hex64();
+        if (SetProcessAffinityMask(GetCurrentProcess(), affinity) != 0) {
+            log_info(
+                "launcher",
+                "SetProcessAffinityMask succeeded, affinity set to 0x{:x}",
+                affinity);
+        } else {
+            auto gle = GetLastError();
+            if (gle == ERROR_INVALID_PARAMETER) {
+                log_fatal(
+                    "launcher",
+                    "SetProcessAffinityMask failed, provided 0x{:x}, GLE: ERROR_INVALID_PARAMETER. "
+                    "Make sure you only specify bits for processors that exist",
+                    affinity);
+            } else {
+                log_fatal(
+                    "launcher",
+                    "SetProcessAffinityMask failed, provided 0x{:x}, GLE: {}",
+                    affinity,
+                    gle);
+            }
         }
     }
 
@@ -1445,9 +1601,6 @@ int main_implementation(int argc, char *argv[]) {
         }
     }
 
-    // load AVS-EA3
-    avs::ea3::boot(easrv_port, easrv_maint, easrv_smart);
-
     // apply patches
     {
         overlay::windows::PatchManager patch_manager(nullptr, true);
@@ -1456,6 +1609,9 @@ int main_implementation(int argc, char *argv[]) {
     // load scripts
     script::manager_scan();
     script::manager_boot();
+
+    // load AVS-EA3
+    avs::ea3::boot(easrv_port, easrv_maint, easrv_smart);
 
     // eamuse init
     eamuse_autodetect_game();

@@ -10,6 +10,7 @@
 #include "hooks/libraryhook.h"
 #include "hooks/powrprof.h"
 #include "hooks/sleephook.h"
+#include "touch/touch.h"
 #include "util/detour.h"
 #include "util/logging.h"
 #include "util/sigscan.h"
@@ -21,11 +22,118 @@
 #include "io.h"
 #include "acioemu/handle.h"
 
+static decltype(RegCloseKey) *RegCloseKey_orig = nullptr;
+static decltype(RegEnumKeyA) *RegEnumKeyA_orig = nullptr;
+static decltype(RegOpenKeyA) *RegOpenKeyA_orig = nullptr;
+static decltype(RegOpenKeyExA) *RegOpenKeyExA_orig = nullptr;
+static decltype(RegQueryValueExA) *RegQueryValueExA_orig = nullptr;
+
 namespace games::sdvx {
+
+    // constants
+    const HKEY PARENT_ASIO_REG_HANDLE = reinterpret_cast<HKEY>(0x3001);
+    const HKEY DEVICE_ASIO_REG_HANDLE = reinterpret_cast<HKEY>(0x3002);
+    const char *ORIGINAL_ASIO_DEVICE_NAME = "XONAR SOUND CARD(64)";
 
     // settings
     bool DISABLECAMS = false;
     bool NATIVETOUCH = false;
+    uint8_t DIGITAL_KNOB_SENS = 16;
+    SdvxOverlayPosition OVERLAY_POS = SDVX_OVERLAY_BOTTOM;
+
+    std::optional<std::string> SOUND_OUTPUT_DEVICE = std::nullopt;
+    std::optional<std::string> ASIO_DRIVER = std::nullopt;
+
+    // states
+    static HKEY real_asio_reg_handle = nullptr;
+    static HKEY real_asio_device_reg_handle = nullptr;
+
+    static LONG WINAPI RegOpenKeyA_hook(HKEY hKey, LPCSTR lpSubKey, PHKEY phkResult) {
+        if (lpSubKey != nullptr && phkResult != nullptr) {
+            if (hKey == HKEY_LOCAL_MACHINE &&
+                    ASIO_DRIVER.has_value() &&
+                    _stricmp(lpSubKey, "software\\asio") == 0)
+            {
+                *phkResult = PARENT_ASIO_REG_HANDLE;
+
+                return RegOpenKeyA_orig(hKey, lpSubKey, &real_asio_reg_handle);
+            }
+        }
+
+        return RegOpenKeyA_orig(hKey, lpSubKey, phkResult);
+    }
+
+    static LONG WINAPI RegOpenKeyExA_hook(HKEY hKey, LPCSTR lpSubKey, DWORD ulOptions, REGSAM samDesired,
+            PHKEY phkResult)
+    {
+        if (lpSubKey != nullptr && phkResult != nullptr) {
+            if (hKey == PARENT_ASIO_REG_HANDLE &&
+                    ASIO_DRIVER.has_value() &&
+                    _stricmp(lpSubKey, ORIGINAL_ASIO_DEVICE_NAME) == 0)
+            {
+                *phkResult = DEVICE_ASIO_REG_HANDLE;
+
+                log_info("sdvx::asio", "replacing '{}' with '{}'", lpSubKey, ASIO_DRIVER.value());
+
+                return RegOpenKeyExA_orig(real_asio_reg_handle, ASIO_DRIVER.value().c_str(), ulOptions, samDesired,
+                        &real_asio_device_reg_handle);
+            }
+        }
+
+        return RegOpenKeyExA_orig(hKey, lpSubKey, ulOptions, samDesired, phkResult);
+    }
+
+    static LONG WINAPI RegEnumKeyA_hook(HKEY hKey, DWORD dwIndex, LPSTR lpName, DWORD cchName) {
+        if (hKey == PARENT_ASIO_REG_HANDLE && ASIO_DRIVER.has_value()) {
+            if (dwIndex == 0) {
+                auto ret = RegEnumKeyA_orig(real_asio_reg_handle, dwIndex, lpName, cchName);
+
+                if (ret == ERROR_SUCCESS && lpName != nullptr) {
+                    log_info("sdvx::asio", "stubbing '{}' with '{}'", lpName, ORIGINAL_ASIO_DEVICE_NAME);
+
+                    strncpy(lpName, ORIGINAL_ASIO_DEVICE_NAME, cchName);
+                }
+
+                return ret;
+            } else {
+                return ERROR_NO_MORE_ITEMS;
+            }
+        }
+
+        return RegEnumKeyA_orig(hKey, dwIndex, lpName, cchName);
+    }
+
+    static LONG WINAPI RegQueryValueExA_hook(HKEY hKey, LPCTSTR lpValueName, LPDWORD lpReserved, LPDWORD lpType,
+            LPBYTE lpData, LPDWORD lpcbData)
+    {
+        if (lpValueName != nullptr && lpData != nullptr && lpcbData != nullptr) {
+            if (hKey == DEVICE_ASIO_REG_HANDLE && ASIO_DRIVER.has_value()) {
+                log_info("sdvx::asio", "RegQueryValueExA({}, \"{}\")", fmt::ptr((void *) hKey), lpValueName);
+
+                if (_stricmp(lpValueName, "Description") == 0) {
+                    // sdvx does a comparison against "XONAR SOUND CARD(64)"
+                    // otherwise you end up with this error:
+                    // M:BMSoundLib: ASIODriver: No such driver: XONAR SOUND CARD(64)
+                    memcpy(lpData, ORIGINAL_ASIO_DEVICE_NAME, strlen(ORIGINAL_ASIO_DEVICE_NAME) + 1);
+
+                    return ERROR_SUCCESS;
+                } else {
+                    hKey = real_asio_device_reg_handle;
+                }
+            }
+        }
+
+        // fallback
+        return RegQueryValueExA_orig(hKey, lpValueName, lpReserved, lpType, lpData, lpcbData);
+    }
+
+    static LONG WINAPI RegCloseKey_hook(HKEY hKey) {
+        if (hKey == PARENT_ASIO_REG_HANDLE || hKey == DEVICE_ASIO_REG_HANDLE) {
+            return ERROR_SUCCESS;
+        }
+
+        return RegCloseKey_orig(hKey);
+    }
 
     SDVXGame::SDVXGame() : Game("Sound Voltex") {
     }
@@ -161,6 +269,7 @@ namespace games::sdvx {
                 // hook touch window
                 if (!NATIVETOUCH) {
                     wintouchemu::FORCE = true;
+                    wintouchemu::INJECT_MOUSE_AS_WM_TOUCH = true;
                     wintouchemu::hook_title_ends(
                             "SOUND VOLTEX",
                             "Main Screen",
@@ -179,7 +288,21 @@ namespace games::sdvx {
                 libraryhook_enable(avs::game::DLL_INSTANCE);
             }
         }
+#endif
 
+        // ASIO device hook
+        RegCloseKey_orig = detour::iat_try(
+                "RegCloseKey", RegCloseKey_hook, avs::game::DLL_INSTANCE);
+        RegEnumKeyA_orig = detour::iat_try(
+                "RegEnumKeyA", RegEnumKeyA_hook, avs::game::DLL_INSTANCE);
+        RegOpenKeyA_orig = detour::iat_try(
+                "RegOpenKeyA", RegOpenKeyA_hook, avs::game::DLL_INSTANCE);
+        RegOpenKeyExA_orig = detour::iat_try(
+                "RegOpenKeyExA", RegOpenKeyExA_hook, avs::game::DLL_INSTANCE);
+        RegQueryValueExA_orig = detour::iat_try(
+                "RegQueryValueExA", RegQueryValueExA_hook, avs::game::DLL_INSTANCE);
+
+#ifdef SPICE64
         powrprof_hook_init(avs::game::DLL_INSTANCE);
 
         // hook camera

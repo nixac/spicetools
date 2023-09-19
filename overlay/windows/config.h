@@ -69,8 +69,8 @@ namespace overlay::windows {
         void build_about();
         void build_licenses();
         void build_launcher();
+        void launch_url();
 
         static void build_page_selector(int *page);
-        static void vertical_align_text_column();
     };
 }

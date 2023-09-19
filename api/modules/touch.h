@@ -11,10 +11,14 @@ namespace api::modules {
         Touch();
 
     private:
+        bool is_sdvx;
+        bool is_tdj_fhd;
 
         // function definitions
         void read(Request &req, Response &res);
         void write(Request &req, Response &res);
         void write_reset(Request &req, Response &res);
+        void apply_touch_errata(int &x, int &y);
+
     };
 }

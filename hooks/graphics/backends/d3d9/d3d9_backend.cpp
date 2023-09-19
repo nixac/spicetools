@@ -401,23 +401,58 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3D9::EnumAdapterModes(
                 format2s(pMode->Format));
                 */
 
+        bool modified = false;
         auto width = pMode->Width;
+        auto height = pMode->Height;
         auto refresh = pMode->RefreshRate;
 
         if (Mode == 0 && games::iidx::TDJ_MODE) {
-            log_misc("graphics::d3d9", "overriding mode 0 to 1280x720 @ 120 Hz");
-
-            pMode->Width = 1280;
-            pMode->Height = 720;
-            pMode->RefreshRate = 120;
+            if (games::iidx::is_tdj_fhd()) {
+                log_misc("graphics::d3d9", "overriding mode 0 to 1920x1080 @ 120 Hz (for TDJ FHD)");
+                pMode->Width = 1920;
+                pMode->Height = 1080;
+                pMode->RefreshRate = 120;
+                modified = true;
+            } else {
+                log_misc("graphics::d3d9", "overriding mode 0 to 1280x720 @ 120 Hz (for TDJ HD)");
+                pMode->Width = 1280;
+                pMode->Height = 720;
+                pMode->RefreshRate = 120;
+                modified = true;
+            }
         }
 
+        // For whatever reason, TDJ FHD mode prefers to pick these resolutions over 1080p@120Hz.
+        // Remove them entirely.
+        if (!modified && games::iidx::is_tdj_fhd() && refresh == 60) {
+            if ((width == 1920 && height == 1080) || 
+                (width == 1280 && height == 720)){
+                log_misc(
+                    "graphics::d3d9", "removing mode {}, {}x{} @ {}Hz (for TDJ FHD)",
+                    Mode, width, height, refresh);
+                memset(pMode, 0, sizeof(*pMode));
+                modified = true;
+            }
+        }
+        
         // zero out display mode for bad entries
         // - skip non-native resolutions
         // - skip 75 and 90 Hz entries because LDJ game timing is messed up with it
         //   (TDJ should be fine as it assumes a fixed 60 Hz timing)
-        if (width == 1360 || width == 1366 || refresh == 75 || refresh == 90) {
+        if (!modified && (width == 1360 || width == 1366 || refresh == 75 || refresh == 90)) {
+            log_misc(
+                "graphics::d3d9", "removing mode {}, {}x{} @ {}Hz (for LDJ/TDJ)",
+                Mode, width, height, refresh);
             memset(pMode, 0, sizeof(*pMode));
+            modified = true;
+        }
+
+        if (!modified && !games::iidx::TDJ_MODE && games::iidx::FORCE_720P && (height > 720)) {
+            log_misc(
+                "graphics::d3d9", "removing mode {}, {}x{} @ {}Hz (-sp2x-iidxforce720p)",
+                Mode, width, height, refresh);
+            memset(pMode, 0, sizeof(*pMode));
+            modified = true;
         }
     }
 
@@ -613,12 +648,20 @@ HRESULT STDMETHODCALLTYPE WrappedIDirect3D9::CreateDevice(
     if (GRAPHICS_WINDOWED) {
         pPresentationParameters->Windowed = true;
         pPresentationParameters->FullScreen_RefreshRateInHz = 0;
+
     } else if (GRAPHICS_FORCE_REFRESH > 0) {
-        log_info("graphics::d3d9", "force refresh rate: {} => {} Hz",
+        log_info("graphics::d3d9", "force refresh rate: {} => {} Hz (-graphics-force-refresh option)",
                 pPresentationParameters->FullScreen_RefreshRateInHz,
                 GRAPHICS_FORCE_REFRESH);
 
         pPresentationParameters->FullScreen_RefreshRateInHz = GRAPHICS_FORCE_REFRESH;
+
+    } else if (pPresentationParameters->FullScreen_RefreshRateInHz == 0) {
+        log_warning(
+            "graphics::d3d9",
+            "This game sets FullScreen_RefreshRateInHz to 0, which means it will boot with whatever "
+            "refresh rate you have set in the desktop. If the game is launching at the wrong Hz, "
+            "either use -graphics-force-refresh option or change the desktop resolution beforehand.");
     }
 
     // force single adapter
@@ -910,7 +953,11 @@ static void graphics_d3d9_ldj_on_present(IDirect3DDevice9 *wrapped_device) {
 
         HRESULT hr = wrapped_device->GetSwapChain(1, &SUB_SWAP_CHAIN);
         if (FAILED(hr)) {
-            log_warning("graphics::d3d9", "failed to acquire sub swap chain, hr={}", FMT_HRESULT(hr));
+            log_warning(
+                "graphics::d3d9",
+                "failed to acquire sub screeen swap chain; "
+                "this can be ignored if game does not have sub screen, hr={}",
+                FMT_HRESULT(hr));
             return;
         }
     }

@@ -2,6 +2,7 @@
 
 #include "avs/game.h"
 #include "games/ddr/io.h"
+#include "games/sdvx/sdvx.h"
 #include "games/sdvx/io.h"
 #include "games/drs/io.h"
 #include "games/drs/drs.h"
@@ -92,18 +93,18 @@ static bool __cdecl ac_io_bi2a_update_control_status_buffer() {
 
         // volume left
         if (Buttons::getState(RI_MGR, buttons.at(games::sdvx::Buttons::VOL_L_Left))) {
-            BI2A_VOLL = (BI2A_VOLL - 16) & 1023;
+            BI2A_VOLL = (BI2A_VOLL - games::sdvx::DIGITAL_KNOB_SENS) & 1023;
         }
         if (Buttons::getState(RI_MGR, buttons.at(games::sdvx::Buttons::VOL_L_Right))) {
-            BI2A_VOLL = (BI2A_VOLL + 16) & 1023;
+            BI2A_VOLL = (BI2A_VOLL + games::sdvx::DIGITAL_KNOB_SENS) & 1023;
         }
 
         // volume right
         if (Buttons::getState(RI_MGR, buttons.at(games::sdvx::Buttons::VOL_R_Left))) {
-            BI2A_VOLR = (BI2A_VOLR - 16) & 1023;
+            BI2A_VOLR = (BI2A_VOLR - games::sdvx::DIGITAL_KNOB_SENS) & 1023;
         }
         if (Buttons::getState(RI_MGR, buttons.at(games::sdvx::Buttons::VOL_R_Right))) {
-            BI2A_VOLR = (BI2A_VOLR + 16) & 1023;
+            BI2A_VOLR = (BI2A_VOLR + games::sdvx::DIGITAL_KNOB_SENS) & 1023;
         }
 
         // update volumes

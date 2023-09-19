@@ -17,7 +17,7 @@ namespace overlay::windows {
         // configure editor defaults
         this->editor = new MemoryEditor();
         this->editor->OptShowDataPreview = true;
-        this->editor->PreviewDataType = MemoryEditor::DataType::DataType_U16;
+        this->editor->PreviewDataType = ImGuiDataType_U16;
     }
 
     ACIOStatusBuffers::~ACIOStatusBuffers() {

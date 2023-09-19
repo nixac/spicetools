@@ -9,6 +9,7 @@ enum class OptionType {
     Text,
     Integer,
     Enum,
+    Hex,
 };
 
 struct OptionDefinition {
@@ -54,5 +55,6 @@ public:
     const std::string &value_text() const;
     std::vector<std::string> values() const;
     std::vector<std::string> values_text() const;
-    int value_int() const;
+    uint32_t value_uint32() const;
+    uint64_t value_hex64() const;
 };

@@ -366,8 +366,14 @@ namespace games {
         std::vector<unsigned short> vkey_defaults;
 
         // overlay button definitions
+        names.emplace_back("Screenshot");
+        vkey_defaults.push_back(VK_SNAPSHOT);
+        names.emplace_back("Toggle Sub Screen");
+        vkey_defaults.push_back(VK_PRIOR);
         names.emplace_back("Insert Coin");
         vkey_defaults.push_back(VK_F1);
+        names.emplace_back("Toggle IO Panel");
+        vkey_defaults.push_back(VK_F2);
         names.emplace_back("Toggle Config");
         vkey_defaults.push_back(VK_F4);
         names.emplace_back("Toggle Virtual Keypad P1");
@@ -382,12 +388,14 @@ namespace games {
         vkey_defaults.push_back(VK_F9);
         names.emplace_back("Toggle Patch Manager");
         vkey_defaults.push_back(VK_F10);
-        names.emplace_back("Toggle Sub Screen");
-        vkey_defaults.push_back(VK_PRIOR);
-        names.emplace_back("Toggle VR Control");
-        vkey_defaults.push_back(0xFF);
+        names.emplace_back("Toggle Screen Resize");
+        vkey_defaults.push_back(VK_F11);
         names.emplace_back("Toggle Overlay");
         vkey_defaults.push_back(VK_F12);
+        names.emplace_back("Toggle VR Control");
+        vkey_defaults.push_back(0xFF);
+        names.emplace_back("Screen Resize");
+        vkey_defaults.push_back(0xFF);
         names.emplace_back("Navigator Activate");
         vkey_defaults.push_back(0xFF);
         names.emplace_back("Navigator Cancel");
@@ -400,17 +408,11 @@ namespace games {
         vkey_defaults.push_back(0xFF);
         names.emplace_back("Navigator Right");
         vkey_defaults.push_back(0xFF);
-        names.emplace_back("Screenshot");
-        vkey_defaults.push_back(VK_SNAPSHOT);
         names.emplace_back("Hotkey Enable 1");
         vkey_defaults.push_back(0xFF);
         names.emplace_back("Hotkey Enable 2");
         vkey_defaults.push_back(0xFF);
         names.emplace_back("Hotkey Toggle");
-        vkey_defaults.push_back(0xFF);
-        names.emplace_back("Screen Resize");
-        vkey_defaults.push_back(0xFF);
-        names.emplace_back("Toggle Screen Resize");
         vkey_defaults.push_back(0xFF);
 
         // return sorted buttons

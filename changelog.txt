@@ -1,3 +1,82 @@
+06/08/2023 [spice2x]
+    Improved touch support for Jubeat and Reflec Beat.
+
+04/23/2023 [spice2x]
+    Update -iidxsounddevice to automatically pick a value (wasapi in most cases)
+
+04/21/2023 [spice2x]
+    Fix spicecfg not launching in some specific cases
+
+04/20/2023 [spice2x]
+    Update font for IIDX segment display
+    New option: auto show FPS window
+
+04/16/2023 [spice2x] (beta)
+    New feature: window resize. Added new options to change window size and
+        position on launch. Screen Resize window (F11) also updated with new
+        controls
+    Screen Resize settings are now per-game
+    Misc bug fixes
+
+04/09/2023 [spice2x] (beta)
+    Add IIDX LED ticker (segment display) as subscreen overlay for LDJ
+    Add I/O panel window for all games, special support for IIDX, DDR, GFDM
+    Add options to automatically show certain windows on game launch
+
+04/03/2023 [spice2x] (beta)
+    Move/resize for IIDX/SDVX subscreen overlay window
+    New options to control subscreen overlay window
+    Turn common config mistakes into fatal error messages
+    Various bug fixes for touch handling
+    Revert "pop'n launching at desktop refresh rate" hack from 03/30/2023
+
+03/30/2023 [spice2x]
+    New option: IIDX Force Definition Type HD (720p)
+    New option: process priority
+    Fix pop'n launching at desktop refresh rate
+    Lower logger thread priority to reduce stutters
+    Misc bug fixes
+
+03/25/2023 [spice2x]
+    Screen Resize UI update (F11)
+    FPS UI update (F12)
+    New option: processor affinity
+    Misc bug fixes
+
+03/20/2023 [spice2x]
+    ASIO device override for SDVX (experimental)
+    Fix subscreen overlay for SDVX in Valkyrie mode using BI2X I/O
+    Update text for touch and audio config options
+    UI tweaks and minor bug fixes
+
+03/17/2023 [spice2x]
+    Disable UPX (file sizes will be larger)
+    Fix regression from 2022 that prevented early patches
+        from being loaded properly (such as audio hex edits)
+    New option: HID lighting brightness
+    New option: display auto-rotate direction
+    New option: custom sleep duration
+
+03/15/2023 [spice2x]
+    Improve IIDX TT+/- handling (allow alternate key bind)
+    Fix SpiceCompanion touch targets for TDJ FHD
+    Config UI tweaks
+
+03/13/2023 [spice2x]
+    Fix TDJ FHD launching at wrong refresh rate
+    New IIDX/SDVX options for TT/knob sensitivity when using digital input
+
+03/12/2023 [spice2x]
+    Fix mouse input for SDVX EG subscreen overlay
+    New unified layout for Options tab
+    Allow multiple DLLs in Inject Hook field
+
+03/11/2023 [spice2x]
+    Beginning of spice2x fork, based on another fork
+    Ensure TDJ mode runs at 1080p@120Hz for newer games
+    Fix IIDX subscreen overlay in FHD mode
+    Gracefully deal with bad ea3-config.xml
+
 04/02/2022 - Add lua scripting
              Add button edit dialog
              Add button debounce/invert settings

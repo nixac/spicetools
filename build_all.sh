@@ -29,14 +29,17 @@ BUILDDIR_32_DEBUG="./cmake-build-debug-32"
 BUILDDIR_64_RELEASE="./cmake-build-release-64"
 BUILDDIR_64_DEBUG="./cmake-build-debug-64"
 DEBUG=0
-OUTDIR="./bin/spicetools"
-UPX_ENABLE=1
+OUTDIR="./bin/spice2x"
+
+# disabled UPX since it tends to falsely trigger malware detection
+UPX_ENABLE=0
 UPX_FLAGS="-q --best --lzma --compress-exports=0"
+
 CLEAN_BUILD=1
 INCLUDE_SRC=1
 DIST_ENABLE=1
 DIST_FOLDER="./dist"
-DIST_NAME="spicetools-$(date +%y)-$(date +%m)-$(date +%d).zip"
+DIST_NAME="spice2x-$(date +%y)-$(date +%m)-$(date +%d).zip"
 DIST_COMMENT=${DIST_NAME}$'\n'"$GIT_BRANCH - $GIT_HEAD"$'\nThank you for playing.'
 TARGETS_32="spicetools_stubs_kbt spicetools_stubs_kld spicetools_cfg spicetools_spice"
 TARGETS_64="spicetools_stubs_kbt64 spicetools_stubs_kld64 spicetools_spice64"
@@ -101,7 +104,7 @@ echo "Compilation process done :)"
 echo "==========================="
 
 # generate PDBs
-if ((DEBUG > 0))
+if false  # ((DEBUG > 0))
 then
 	echo "Generating PDBs..."
 
@@ -150,7 +153,7 @@ rm -rf ${OUTDIR}
 mkdir -p ${OUTDIR}
 #mkdir -p ${OUTDIR}/stubs/32
 #mkdir -p ${OUTDIR}/stubs/64
-if ((DEBUG > 0))
+if false # ((DEBUG > 0))
 then
     # debug files
     cp ${BUILDDIR_32}/spicetools/spicecfg-pdb.exe ${OUTDIR} 2>/dev/null
@@ -193,7 +196,7 @@ mkdir -p ${OUTDIR}/src
 if ((INCLUDE_SRC > 0))
 then
 	echo "Generating source file archive..."
-	git archive --format tar --prefix=spicetools/ HEAD | gzip -9 > ${OUTDIR}/src/spicetools-${GIT_BRANCH}.tar.gz 2>/dev/null || \
+	git archive --format tar.gz --prefix=spice2x/ HEAD > ${OUTDIR}/src/spice2x-${GIT_BRANCH}.tar.gz 2>/dev/null || \
 		echo "WARNING: Couldn't get git to create the archive. Is this a git repository?"
 fi
 

@@ -11,8 +11,11 @@ namespace games::iidx {
     extern bool FLIP_CAMS;
     extern bool DISABLE_CAMS;
     extern bool TDJ_MODE;
+    extern bool FORCE_720P;
     extern std::optional<std::string> SOUND_OUTPUT_DEVICE;
     extern std::optional<std::string> ASIO_DRIVER;
+    extern uint8_t DIGITAL_TT_SENS;
+    extern std::optional<std::string> SUBSCREEN_OVERLAY_SIZE;
 
     // state
     extern char IIDXIO_LED_TICKER[10];
@@ -27,6 +30,9 @@ namespace games::iidx {
         virtual void attach() override;
         virtual void pre_attach() override;
         virtual void detach() override;
+
+    private:
+        void detect_sound_output_device();
     };
 
     // helper methods
@@ -38,4 +44,5 @@ namespace games::iidx {
     unsigned char get_tt(int player, bool slow);
     unsigned char get_slider(uint8_t slider);
     const char* get_16seg();
+    bool is_tdj_fhd();
 }

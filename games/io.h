@@ -7,7 +7,10 @@ namespace games {
 
     namespace OverlayButtons {
         enum {
+            Screenshot,
+            ToggleSubScreen,
             InsertCoin,
+            ToggleIOPanel,
             ToggleConfig,
             ToggleVirtualKeypadP1,
             ToggleVirtualKeypadP2,
@@ -15,21 +18,19 @@ namespace games {
             ToggleLog,
             ToggleControl,
             TogglePatchManager,
-            ToggleSubScreen,
-            ToggleVRControl,
+            ToggleScreenResize,
             ToggleOverlay,
+            ToggleVRControl,
+            ScreenResize,
             NavigatorActivate,
             NavigatorCancel,
             NavigatorUp,
             NavigatorDown,
             NavigatorLeft,
             NavigatorRight,
-            Screenshot,
             HotkeyEnable1,
             HotkeyEnable2,
             HotkeyToggle,
-            ScreenResize,
-            ToggleScreenResize,
         };
     }
 

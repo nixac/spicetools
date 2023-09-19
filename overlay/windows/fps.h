@@ -1,15 +1,19 @@
 #pragma once
 
+#include <chrono>
 #include "overlay/window.h"
 
 namespace overlay::windows {
 
     class FPS : public Window {
+    private:
+        std::chrono::system_clock::time_point start_time;
+
     public:
 
         FPS(SpiceOverlay *overlay);
 
-        const ImVec2 initial_pos() override;
+        void calculate_initial_window() override;
         void build_content() override;
     };
 }

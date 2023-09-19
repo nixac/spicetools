@@ -10,6 +10,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 # niceities for vscode
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
+# for RapidJSON
+add_compile_definitions(RAPIDJSON_HAS_STDSTRING)
+
 if(MSVC)
 
     # disable intermediate manifest
@@ -419,6 +422,7 @@ set(SOURCE_FILES ${SOURCE_FILES}
         hooks/debughook.cpp
         hooks/devicehook.cpp
         hooks/graphics/graphics.cpp
+        hooks/graphics/graphics_windowed.cpp
         hooks/graphics/backends/d3d9/d3d9_backend.cpp
         hooks/graphics/backends/d3d9/d3d9_device.cpp
         hooks/graphics/backends/d3d9/d3d9_fake_swapchain.cpp
@@ -471,7 +475,13 @@ set(SOURCE_FILES ${SOURCE_FILES}
         overlay/windows/control.cpp
         overlay/windows/eadev.cpp
         overlay/windows/fps.cpp
+        overlay/windows/generic_sub.cpp
+        overlay/windows/iidx_seg.cpp
         overlay/windows/iidx_sub.cpp
+        overlay/windows/iopanel.cpp
+        overlay/windows/iopanel_ddr.cpp
+        overlay/windows/iopanel_gfdm.cpp
+        overlay/windows/iopanel_iidx.cpp
         overlay/windows/keypad.cpp
         overlay/windows/kfcontrol.cpp
         overlay/windows/log.cpp

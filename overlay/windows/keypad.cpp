@@ -77,7 +77,7 @@ namespace overlay::windows {
             }
 
             // mouse down handler
-            if (ImGui::IsItemHovered() && ImGui::IsAnyMouseDown()) {
+            if (ImGui::IsItemActive()) {
                 eamuse_set_keypad_overrides_overlay(this->unit, button.flag);
             }
 

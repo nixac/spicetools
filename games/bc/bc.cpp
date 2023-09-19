@@ -11,13 +11,13 @@ namespace games::bc {
         Game::attach();
 
         setupapihook_init(libutils::load_library("libaio.dll"));
-        setupapihook_add({
-            { 0, 0, 0, 0, },
-            "",
-            "USB\\VID_1CCF&PID_8050\\0000",
-            {},
-            "COM3",
-        });
+
+        SETUPAPI_SETTINGS settings {};
+        const char hwid[] = "USB\\VID_1CCF&PID_8050\\0000";
+        memcpy(settings.property_hardwareid, hwid, sizeof(hwid));
+        const char comport[] = "COM3";
+        memcpy(settings.interface_detail, comport, sizeof(comport));
+        setupapihook_add(settings);
 
         auto iob = new acio2emu::IOBHandle(L"COM3");
         iob->register_node(std::make_unique<TBSNode>());

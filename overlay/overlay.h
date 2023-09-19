@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <mutex>
+#include <functional>
 #include <vector>
 #include <windows.h>
 #include <d3d9.h>
@@ -18,6 +19,12 @@ namespace overlay {
 
     // settings
     extern bool ENABLED;
+    extern bool AUTO_SHOW_FPS;
+    extern bool AUTO_SHOW_SUBSCREEN;
+    extern bool AUTO_SHOW_IOPANEL;
+    extern bool AUTO_SHOW_KEYPAD_P1;
+    extern bool AUTO_SHOW_KEYPAD_P2;
+    extern bool USE_WM_CHAR_FOR_IMGUI_CHAR_INPUT;
 
     class SpiceOverlay {
     public:
@@ -43,7 +50,7 @@ namespace overlay {
         static bool update_cursor();
         static void reset_invalidate();
         static void reset_recreate();
-        void input_char(unsigned int c, bool rawinput = false);
+        void input_char(unsigned int c);
 
         uint32_t *sw_get_pixel_data(int *width, int *height);
 
@@ -58,6 +65,22 @@ namespace overlay {
         }
         inline IDirect3DDevice9 *get_device() {
             return this->device;
+        }
+
+        bool can_transform_touch_input() {
+            return (this->subscreen_mouse_handler != nullptr);
+        }
+
+        bool transform_touch_point(LONG *x, LONG *y) {
+            if (this->get_active() && this->subscreen_mouse_handler) {
+                return this->subscreen_mouse_handler(x, y);
+            } else {
+                return true;
+            }
+        }
+
+        void set_subscreen_mouse_handler(const std::function<bool(LONG *, LONG *)> &f) {
+            this->subscreen_mouse_handler = f;
         }
 
         // renderer
@@ -80,9 +103,10 @@ namespace overlay {
         std::vector<std::unique_ptr<Window>> windows;
         Window *window_fps = nullptr;
 
+        std::function<bool(LONG *, LONG *)> subscreen_mouse_handler = nullptr;
+
         bool active = false;
         bool toggle_down = false;
-        bool rawinput_char = true;
         bool hotkey_toggle = false;
         bool hotkey_toggle_last = false;
 
@@ -92,6 +116,7 @@ namespace overlay {
     // global
     extern std::mutex OVERLAY_MUTEX;
     extern std::unique_ptr<overlay::SpiceOverlay> OVERLAY;
+    extern ImFont* DSEG_FONT;
 
     // synchronized helpers
     void create_d3d9(HWND hWnd, IDirect3D9 *d3d, IDirect3DDevice9 *device);

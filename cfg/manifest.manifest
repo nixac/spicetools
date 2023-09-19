@@ -6,7 +6,7 @@
             name="spicecfg.exe"
             type="win32"
     />
-    <description>SpiceTools Config</description>
+    <description>spice2x config</description>
     <dependency>
         <dependentAssembly>
             <assemblyIdentity

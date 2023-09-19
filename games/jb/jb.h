@@ -5,6 +5,7 @@
 namespace games::jb {
 
     // touch stuff
+    extern bool TOUCH_LEGACY_BOX;
     extern bool TOUCH_STATE[16];
     void touch_update();
 

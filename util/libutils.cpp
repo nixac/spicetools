@@ -28,18 +28,26 @@ std::filesystem::path libutils::module_file_name(HMODULE module) {
 
 static inline void load_library_fail(const std::string &file_name, bool fatal) {
     std::string info_str { fmt::format(
-            "\n\nPlease check if {} exists and the permissions are fine.\n"
-            "If the problem still persists, try installing:\n"
-            "* Microsoft Visual C++ Redistributables (*all* versions, *both* x86/x64)\n"
-            "    Hint: use one of the AIO installers (e.g. https://github.com/abbodi1406/vcredist)\n"
-            "* DirectX End-User Runtimes (June 2010)\n"
-            "* Running Windows 10 \"N\"?\n"
-            "    Grab: https://www.microsoft.com/en-us/software-download/mediafeaturepack\n"
-            "    Check: https://support.microsoft.com/en-us/help/4562569/media-feature-pack-for-windows-10-n-may-2020\n"
-            "* Running Windows 7 \"N\"?\n"
-            "    Grab: https://www.microsoft.com/en-us/download/details.aspx?id=16546\n"
-            "* Still have problems?\n"
-            "    Find the missing dependency using: http://www.dependencywalker.com/"
+        "\n\nPlease check if {} exists and the permissions are fine.\n"
+        "If the problem still persists, try installing:\n"
+        "* DirectX End-User Runtimes (June 2010) \n"
+        "    https://www.microsoft.com/en-us/download/details.aspx?id=8109 \n"
+        "* Microsoft Visual C++ Redistributable Runtimes (*all* versions, x86 *AND* x64)\n"
+        "    https://github.com/abbodi1406/vcredist (recommended All-In-One installer)\n"
+        "    You may need to run the installer *multiple times* and reboot after each install\n"
+        "* Running Windows 10 \"N\" or \"KN\" Editions?\n"
+        "    Grab: https://www.microsoft.com/en-us/software-download/mediafeaturepack \n"
+        "    Check: https://support.microsoft.com/en-us/help/4562569/media-feature-pack-for-windows-10-n-may-2020 \n"
+        "* Running Windows 7 \"N\" or \"KN\" Editions?\n"
+        "    x86: https://web.archive.org/web/20190810145509/https://download.microsoft.com/download/B/9/B/B9BED058-8669-490E-BA61-D502E4E8BEB1/Windows6.1-KB968211-x86-RefreshPkg.msu \n"
+        "    x64: https://web.archive.org/web/20190810145509/https://download.microsoft.com/download/B/9/B/B9BED058-8669-490E-BA61-D502E4E8BEB1/Windows6.1-KB968211-x64-RefreshPkg.msu \n"
+        "* Still have problems after installing above?\n"
+        "    Ensure you do NOT have multiple copies of the game DLLs\n"
+        "    Ensure the game DLLs are in the correct place, and double check -modules parameter\n"
+        "    Certain games require specific NVIDIA DLLs when running with AMD GPUs\n"
+        "    Find the missing dependency using:\n"
+        "        https://github.com/lucasg/Dependencies (recommended for most) \n"
+        "        http://www.dependencywalker.com/ (for old OS) \n"
     , file_name) };
     if (fatal) {
         log_fatal("libutils", "{}", info_str);

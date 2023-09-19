@@ -21,6 +21,7 @@ namespace rawinput {
 
     // settings
     bool NOLEGACY = false;
+    uint8_t HID_LIGHT_BRIGHTNESS = 100; // 100%
 }
 
 rawinput::RawInputManager::RawInputManager() {
@@ -2211,9 +2212,12 @@ void rawinput::RawInputManager::device_write_output(Device *device, bool only_up
                         auto &value_cap = hid->value_output_caps_list[cap_no];
                         auto &value_state = hid->value_output_states[cap_no];
 
+                        // adjust output value per "brightness" setting
+                        auto adjusted_value_state = value_state * HID_LIGHT_BRIGHTNESS / 100;
+
                         // build value
                         LONG usage_value = value_cap.LogicalMin +
-                                           lroundf((value_cap.LogicalMax - value_cap.LogicalMin) * value_state);
+                                           lroundf((value_cap.LogicalMax - value_cap.LogicalMin) * adjusted_value_state);
                         if (usage_value > value_cap.LogicalMax) {
                             usage_value = value_cap.LogicalMax;
                         } else if (usage_value < value_cap.LogicalMin) {

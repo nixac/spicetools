@@ -4,6 +4,7 @@
 #include <thread>
 
 #include <windows.h>
+#include <shellapi.h>
 #include <commdlg.h>
 
 #include "build/defs.h"
@@ -17,6 +18,7 @@
 #include "avs/game.h"
 #include "launcher/launcher.h"
 #include "launcher/shutdown.h"
+#include "launcher/options.h"
 #include "misc/eamuse.h"
 #include "overlay/imgui/extensions.h"
 #include "rawinput/piuio.h"
@@ -33,6 +35,8 @@
 #endif
 
 namespace overlay::windows {
+
+    const auto PROJECT_URL = "https://spice2x.github.io";
 
     Config::Config(overlay::SpiceOverlay *overlay) : Window(overlay) {
         this->title = "Configuration";
@@ -238,6 +242,29 @@ namespace overlay::windows {
 
                 // keypad buttons
                 ImGui::TextUnformatted("");
+                if (this->games_selected_name == "Sound Voltex") {
+                    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 8);
+                    ImGui::TextColored(
+                        ImVec4(1, 0.5f, 0.5f, 1.f),
+                        "WARNING: Valkyrie Cabinet I/O will ignore the keypad!");
+                    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 8);
+                    ImGui::TextWrapped(
+                        "Use Toggle Sub Screen button to show the overlay and use your mouse, "
+                        "connect using SpiceCompanion app, or connect a touch screen to enter "
+                        "the PIN.");
+                    ImGui::TextUnformatted("");
+                } else if (this->games_selected_name == "Beatmania IIDX") {
+                    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 8);
+                    ImGui::TextColored(
+                        ImVec4(1, 0.5f, 0.5f, 1.f),
+                        "WARNING: Lightning Model (TDJ) I/O will ignore the keypad!");
+                    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 8);
+                    ImGui::TextWrapped(
+                        "Use Toggle Sub Screen button to show the overlay and use your mouse, "
+                        "connect using SpiceCompanion app, or connect a touch screen to enter "
+                        "the PIN.");
+                    ImGui::TextUnformatted("");
+                }
                 auto keypad_buttons = games::get_buttons_keypads(this->games_selected_name);
                 auto keypad_count = eamuse_get_game_keypads_name();
                 if (keypad_count == 1) {
@@ -336,39 +363,44 @@ namespace overlay::windows {
                 ImGui::EndTabItem();
             }
             if (ImGui::BeginTabItem("Options")) {
+                // options list
                 ImGui::BeginChild("Options", ImVec2(
                         0, ImGui::GetWindowContentRegionMax().y - page_offset), false);
-
-                // get options and categories
                 auto options = games::get_options(this->games_selected_name);
-                std::vector<const char *> categories;
-                categories.push_back("Everything");
-                if (options) {
-                    for (auto &option : *options) {
-                        bool found = false;
-                        for (auto &category : categories) {
-                            if (strcmp(option.get_definition().category.c_str(), category) == 0) {
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) {
-                            categories.push_back(option.get_definition().category.c_str());
-                        }
-                    }
+                for (auto category : launcher::get_categories(false)) {
+                    this->build_options(options, category);
                 }
 
-                // get current category
-                std::string category = "";
-                if (this->options_category != -1 && this->options_category < (int) categories.size()) {
-                    category = categories[this->options_category];
-                    if (category == "Everything") {
-                        category = "";
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 8);
+                ImGui::TextColored(ImVec4(1.f, 0.7f, 0, 1), "Advanced Options");
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 8);
+                ImGui::TextWrapped(
+                    "Rest of the options have moved to Advanced tab.");
+                ImGui::TextUnformatted("");
+                ImGui::TextUnformatted("");
+                ImGui::EndChild();
+
+                // hidden options checkbox
+                ImGui::Checkbox("Show Hidden Options", &this->options_show_hidden);
+                if (!cfg::CONFIGURATOR_STANDALONE && this->options_dirty) {
+                    ImGui::SameLine();
+                    if (ImGui::Button("Restart Game")) {
+                        launcher::restart();
                     }
+                    ImGui::SameLine();
+                    ImGui::HelpMarker("You need to restart the game to apply the changed settings.");
                 }
 
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Advanced")) {
                 // options list
-                this->build_options(options, category);
+                ImGui::BeginChild("AdvancedOptions", ImVec2(
+                        0, ImGui::GetWindowContentRegionMax().y - page_offset), false);
+                auto options = games::get_options(this->games_selected_name);
+                for (auto category : launcher::get_categories(true)) {
+                    this->build_options(options, category);
+                }
                 ImGui::EndChild();
 
                 // hidden options checkbox
@@ -401,12 +433,6 @@ namespace overlay::windows {
                     }
                     ImGui::EndPopup();
                 }
-
-                // category selection
-                ImGui::SameLine();
-                ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
-                ImGui::Combo("Category", &this->options_category, categories.data(), categories.size());
-                ImGui::PopItemWidth();
 
                 ImGui::EndTabItem();
             }
@@ -488,10 +514,10 @@ namespace overlay::windows {
                     style_color = true;
                     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.f));
                 }
-                vertical_align_text_column();
+                ImGui::AlignTextToFramePadding();
                 ImGui::Text("%s", button_name.c_str());
                 ImGui::NextColumn();
-                vertical_align_text_column();
+                ImGui::AlignTextToFramePadding();
                 ImGui::Text("%s", button_display.empty() ? "None" : button_display.c_str());
                 ImGui::NextColumn();
                 if (style_color) {
@@ -622,8 +648,10 @@ namespace overlay::windows {
                                 case rawinput::HID: {
                                     auto hid = device->hidInfo;
 
-                                    // ignore touchscreen button inputs
-                                    if (!rawinput::touch::is_touchscreen(device)) {
+                                    // ignore touchscreen and digitizer button inputs
+                                    // digitizer has funky stuff like "Touch Valid" "Data Valid" always held high
+                                    if (!rawinput::touch::is_touchscreen(device) &&
+                                        hid->caps.UsagePage != 0x0D) {
 
                                         // button caps
                                         auto button_states_list = &hid->button_states;
@@ -1179,7 +1207,7 @@ namespace overlay::windows {
                 }
                 ImGui::Text("%s", analog_name.c_str());
                 ImGui::NextColumn();
-                vertical_align_text_column();
+                ImGui::AlignTextToFramePadding();
                 ImGui::Text("%s", analog_display.empty() ? "None" : analog_display.c_str());
                 ImGui::NextColumn();
                 if (analog_display.empty()) {
@@ -1502,7 +1530,7 @@ namespace overlay::windows {
                 ImGui::SameLine();
                 ImGui::Text("%s", light_name.c_str());
                 ImGui::NextColumn();
-                vertical_align_text_column();
+                ImGui::AlignTextToFramePadding();
                 ImGui::Text("%s", light_display.empty() ? "None" : light_display.c_str());
                 ImGui::NextColumn();
                 if (light_display.empty()) {
@@ -1807,7 +1835,7 @@ namespace overlay::windows {
                 if (!cfg::CONFIGURATOR_STANDALONE && !this->keypads_card_select_browser[player].IsOpened()) {
                     this->keypads_card_select_browser[player].SetTitle("Card Select");
                     this->keypads_card_select_browser[player].SetTypeFilters({".txt", "*"});
-                    this->keypads_card_select_browser[player].flags_ |= ImGuiFileBrowserFlags_EnterNewFilename;
+                    // this->keypads_card_select_browser[player].flags_ |= ImGuiFileBrowserFlags_EnterNewFilename;
                     this->keypads_card_select_browser[player].Open();
                 }
             }
@@ -1903,218 +1931,258 @@ namespace overlay::windows {
     }
 
     void Config::build_options(std::vector<Option> *options, const std::string &category) {
+        int options_count;
+
         ImGui::Columns(3, "OptionsColumns", true);
-        ImGui::TextColored(ImVec4(1.f, 0.7f, 0, 1), "Title"); ImGui::NextColumn();
+        ImGui::TextColored(ImVec4(1.f, 0.7f, 0, 1), category.c_str());
+        ImGui::NextColumn();
         ImGui::TextColored(ImVec4(1.f, 0.7f, 0, 1), "Parameter");
         ImGui::SameLine();
-        ImGui::HelpMarker("These are the command-line parameters you can use in your .bat file to set the options.\n"
-                          "Example: spice.exe -w -ea\n"
-                          "         spice64.exe -api 1337 -apipass changeme");
+        ImGui::HelpMarker(
+            "These are the command-line parameters you can use in your .bat file to set the options.\n"
+            "Example: spice.exe -w -ea\n"
+            "         spice64.exe -api 1337 -apipass changeme");
         ImGui::NextColumn();
-        ImGui::TextColored(ImVec4(1.f, 0.7f, 0, 1), "Setting"); ImGui::NextColumn();
+        ImGui::TextColored(ImVec4(1.f, 0.7f, 0, 1), "Setting");
+        ImGui::NextColumn();
         ImGui::Separator();
 
-        // check if empty
-        if (!options || options->empty()) {
-            ImGui::TextUnformatted("-");
-            ImGui::NextColumn();
-            ImGui::TextUnformatted("-");
-            ImGui::NextColumn();
-            ImGui::TextUnformatted("-");
-            ImGui::NextColumn();
-        }
-
         // iterate options
-        if (options) {
-            for (auto &option : *options) {
+        options_count = 0;
+        for (auto &option : *options) {
+            // get option definition
+            auto &definition = option.get_definition();
 
-                // get option definition
-                auto &definition = option.get_definition();
+            // check category
+            if (!category.empty() && definition.category != category) {
+                continue;
+            }
 
-                // check category
-                if (!category.empty() && definition.category != category) {
+            // check hidden option
+            if (!this->options_show_hidden && option.value.empty()) {
+
+                // skip hidden entries
+                if (definition.hidden) {
                     continue;
                 }
 
-                // check hidden option
-                if (!this->options_show_hidden && option.value.empty()) {
-
-                    // skip hidden entries
-                    if (definition.hidden) {
+                // check for game exclusivity
+                if (!definition.game_name.empty()) {
+                    if (definition.game_name != this->games_selected_name) {
                         continue;
                     }
-
-                    // check for game exclusivity
-                    if (!definition.game_name.empty()) {
-                        if (definition.game_name != this->games_selected_name) {
-                            continue;
-                        }
-                    }
                 }
+            }
 
-                // list entry
-                ImGui::PushID(&option);
-                vertical_align_text_column();
-                ImGui::HelpMarker(definition.desc.c_str());
-                ImGui::SameLine();
-                if (option.is_active()) {
-                    if (option.disabled) {
-                        ImGui::TextColored(ImVec4(1.f, 0.4f, 0.f, 1.f), "%s", definition.title.c_str());
-                    } else {
-                        ImGui::TextColored(ImVec4(1.f, 0.7f, 0.f, 1.f), "%s", definition.title.c_str());
-                    }
-                } else if (definition.hidden
-                || (!definition.game_name.empty() && definition.game_name != this->games_selected_name)) {
-                    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.f), "%s", definition.title.c_str());
-                } else if (definition.game_name == this->games_selected_name) {
-                    ImGui::TextColored(ImVec4(0.8f, 0, 0.8f, 1.f), "%s", definition.title.c_str());
-                } else {
-                    ImGui::Text("%s", definition.title.c_str());
-                }
-                ImGui::NextColumn();
-                vertical_align_text_column();
-                ImGui::Text("-%s", definition.name.c_str());
-                ImGui::NextColumn();
+            options_count += 1;
+
+            // list entry
+            ImGui::PushID(&option);
+            ImGui::AlignTextToFramePadding();
+            ImGui::HelpMarker(definition.desc.c_str());
+            ImGui::SameLine();
+            if (option.is_active()) {
                 if (option.disabled) {
-                    ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
-                    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+                    ImGui::TextColored(ImVec4(1.f, 0.4f, 0.f, 1.f), "%s", definition.title.c_str());
+                } else {
+                    ImGui::TextColored(ImVec4(1.f, 0.7f, 0.f, 1.f), "%s", definition.title.c_str());
                 }
-                switch (definition.type) {
-                    case OptionType::Bool: {
-                        bool state = !option.value.empty();
-                        if (ImGui::Checkbox(state ? "Enabled" : "Disabled", &state)) {
-                            this->options_dirty = true;
-                            option.value = state ? "/ENABLED" : "";
-                            ::Config::getInstance().updateBinding(games_list[games_selected], option);
-                        }
-                        break;
-                    }
-                    case OptionType::Integer: {
-                        char buffer[512];
-                        strncpy(buffer, option.value.c_str(), sizeof(buffer) - 1);
-                        buffer[sizeof(buffer) - 1] = '\0';                        
-                        auto digits_filter = [](ImGuiInputTextCallbackData* data) {
-                            if ('0' <= data->EventChar && data->EventChar <= '9') {
-                                return 0;
-                            }
-                            return 1;
-                        };
-
-                        const char *hint = definition.setting_name.empty() ? "Enter number..."
-                                : definition.setting_name.c_str();
-
-                        if (ImGui::InputTextWithHint("", hint,
-                                buffer, sizeof(buffer) - 1,
-                                ImGuiInputTextFlags_CallbackCharFilter, digits_filter)) {
-                            this->options_dirty = true;
-                            option.value = buffer;
-                            ::Config::getInstance().updateBinding(games_list[games_selected], option);
-                        }
-                        break;
-                    }
-                    case OptionType::Text: {
-                        char buffer[512];
-                        strncpy(buffer, option.value.c_str(), sizeof(buffer) - 1);
-                        buffer[sizeof(buffer) - 1] = '\0';
-
-                        const char *hint = definition.setting_name.empty() ? "Enter value..."
-                                : definition.setting_name.c_str();
-
-                        if (ImGui::InputTextWithHint("", hint, buffer, sizeof(buffer) - 1)) {
-                            this->options_dirty = true;
-                            option.value = buffer;
-                            ::Config::getInstance().updateBinding(games_list[games_selected], option);
-                        }
-                        break;
-                    }
-                    case OptionType::Enum: {
-                        std::string current_item = option.value_text();
-                        for (auto &element : definition.elements) {
-                            if (element.first == current_item) {
-                                current_item += fmt::format(" ({})", element.second);
-                            }
-                        }
-                        if (current_item.empty()) {
-                            current_item = "Default";
-                        }
-                        if (ImGui::BeginCombo("##combo", current_item.c_str(), 0)) {
-                            for (auto &element : definition.elements) {
-                                bool selected = current_item == element.first;
-                                std::string label = element.first;
-                                if (!element.second.empty()) {
-                                    label += fmt::format(" ({})", element.second);
-                                }
-                                if (ImGui::Selectable(label.c_str(), selected)) {
-                                    this->options_dirty = true;
-                                    option.value = element.first;
-                                    ::Config::getInstance().updateBinding(games_list[games_selected], option);
-                                }
-                                if (selected) {
-                                    ImGui::SetItemDefaultFocus();
-                                }
-                            }
-                            ImGui::EndCombo();
-                        }
-                        break;
-                    }
-                    default: {
-                        ImGui::Text("Unknown option type");
-                        break;
-                    }
-                }
-
-                // clear button
-                if (!option.disabled && option.is_active() && option.get_definition().type != OptionType::Bool) {
-                    ImGui::SameLine();
-                    if (ImGui::Button("Clear")) {
+            } else if (definition.hidden
+            || (!definition.game_name.empty() && definition.game_name != this->games_selected_name)) {
+                ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.f), "%s", definition.title.c_str());
+            } else if (definition.game_name == this->games_selected_name) {
+                ImGui::TextColored(ImVec4(0.8f, 0, 0.8f, 1.f), "%s", definition.title.c_str());
+            } else {
+                ImGui::Text("%s", definition.title.c_str());
+            }
+            ImGui::NextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("-%s", definition.name.c_str());
+            ImGui::NextColumn();
+            if (option.disabled) {
+                ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+                ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+            }
+            switch (definition.type) {
+                case OptionType::Bool: {
+                    bool state = !option.value.empty();
+                    if (ImGui::Checkbox(state ? "Enabled" : "Disabled", &state)) {
                         this->options_dirty = true;
-                        option.value = "";
+                        option.value = state ? "/ENABLED" : "";
                         ::Config::getInstance().updateBinding(games_list[games_selected], option);
                     }
+                    break;
                 }
+                case OptionType::Integer: {
+                    char buffer[512];
+                    strncpy(buffer, option.value.c_str(), sizeof(buffer) - 1);
+                    buffer[sizeof(buffer) - 1] = '\0';
+                    auto digits_filter = [](ImGuiInputTextCallbackData* data) {
+                        if ('0' <= data->EventChar && data->EventChar <= '9') {
+                            return 0;
+                        }
+                        return 1; // discard
+                    };
 
-                // clean up disabled item flags
-                if (option.disabled) {
-                    ImGui::PopItemFlag();
-                    ImGui::PopStyleVar();
+                    const char *hint = definition.setting_name.empty() ? "Enter number..."
+                            : definition.setting_name.c_str();
+
+                    if (ImGui::InputTextWithHint("", hint,
+                            buffer, sizeof(buffer) - 1,
+                            ImGuiInputTextFlags_CallbackCharFilter, digits_filter)) {
+                        this->options_dirty = true;
+                        option.value = buffer;
+                        ::Config::getInstance().updateBinding(games_list[games_selected], option);
+                    }
+                    break;
                 }
+                case OptionType::Hex: {
+                    char buffer[512];
+                    strncpy(buffer, option.value.c_str(), sizeof(buffer) - 1);
+                    buffer[sizeof(buffer) - 1] = '\0';
+                    auto digits_filter = [](ImGuiInputTextCallbackData* data) {
+                        if ('0' <= data->EventChar && data->EventChar <= '9') {
+                            return 0;
+                        }
+                        if ('a' <= data->EventChar && data->EventChar <= 'f') {
+                            return 0;
+                        }
+                        if ('A' <= data->EventChar && data->EventChar <= 'F') {
+                            return 0;
+                        }
+                        if (data->EventChar == 'x' || data->EventChar == 'X') {
+                            return 0;
+                        }
+                        return 1; // discard
+                    };
+                    const char *hint = definition.setting_name.empty() ? "Enter hex..."
+                            : definition.setting_name.c_str();
 
-                // disabled help
-                if (option.disabled) {
-                    ImGui::SameLine();
-                    ImGui::HelpMarker("This option can not be edited because it was overriden by command-line "
-                                      "options.\n"
-                                      "Run spicecfg.exe to configure the options and then run spice(64).exe directly.");
+                    if (ImGui::InputTextWithHint("", hint,
+                            buffer, sizeof(buffer) - 1,
+                            ImGuiInputTextFlags_CallbackCharFilter, digits_filter)) {
+                        this->options_dirty = true;
+                        option.value = buffer;
+                        ::Config::getInstance().updateBinding(games_list[games_selected], option);
+                    }
+                    break;
                 }
+                case OptionType::Text: {
+                    char buffer[512];
+                    strncpy(buffer, option.value.c_str(), sizeof(buffer) - 1);
+                    buffer[sizeof(buffer) - 1] = '\0';
 
-                // next item
-                ImGui::PopID();
-                ImGui::NextColumn();
+                    const char *hint = definition.setting_name.empty() ? "Enter value..."
+                            : definition.setting_name.c_str();
+
+                    if (ImGui::InputTextWithHint("", hint, buffer, sizeof(buffer) - 1)) {
+                        this->options_dirty = true;
+                        option.value = buffer;
+                        ::Config::getInstance().updateBinding(games_list[games_selected], option);
+                    }
+                    break;
+                }
+                case OptionType::Enum: {
+                    std::string current_item = option.value_text();
+                    for (auto &element : definition.elements) {
+                        if (element.first == current_item) {
+                            current_item += fmt::format(" ({})", element.second);
+                        }
+                    }
+                    if (current_item.empty()) {
+                        current_item = "Default";
+                    }
+                    if (ImGui::BeginCombo("##combo", current_item.c_str(), 0)) {
+                        for (auto &element : definition.elements) {
+                            bool selected = current_item == element.first;
+                            std::string label = element.first;
+                            if (!element.second.empty()) {
+                                label += fmt::format(" ({})", element.second);
+                            }
+                            if (ImGui::Selectable(label.c_str(), selected)) {
+                                this->options_dirty = true;
+                                option.value = element.first;
+                                ::Config::getInstance().updateBinding(games_list[games_selected], option);
+                            }
+                            if (selected) {
+                                ImGui::SetItemDefaultFocus();
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
+                    break;
+                }
+                default: {
+                    ImGui::Text("Unknown option type");
+                    break;
+                }
             }
+
+            // clear button
+            if (!option.disabled && option.is_active() && option.get_definition().type != OptionType::Bool) {
+                ImGui::SameLine();
+                if (ImGui::Button("Clear")) {
+                    this->options_dirty = true;
+                    option.value = "";
+                    ::Config::getInstance().updateBinding(games_list[games_selected], option);
+                }
+            }
+
+            // clean up disabled item flags
+            if (option.disabled) {
+                ImGui::PopItemFlag();
+                ImGui::PopStyleVar();
+            }
+
+            // disabled help
+            if (option.disabled) {
+                ImGui::SameLine();
+                ImGui::HelpMarker(
+                    "This option can not be edited because it was overriden by command-line options.\n"
+                    "Run spicecfg.exe to configure the options and then run spice(64).exe directly.");
+            }
+
+            // next item
+            ImGui::PopID();
+            ImGui::NextColumn();
         }
+            
+        // check if empty
+        if (options_count == 0) {
+            ImGui::TextUnformatted("-");
+            ImGui::NextColumn();
+            ImGui::TextUnformatted("-");
+            ImGui::NextColumn();
+            ImGui::TextUnformatted("-");
+            ImGui::NextColumn();
+        }
+
+        ImGui::Columns(1);
+        ImGui::TextUnformatted("");
     }
 
     void Config::build_about() {
-        auto time = get_system_milliseconds();
-        auto value = ((float) cos(time * 0.0005) + 1.f) * 0.5f;
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f - value * 0.3f, 1.f, 1.f, 1.f));
         ImGui::TextUnformatted(std::string(
-                                      "SpiceTools\r\n"
-                                      "=========================\r\n" +
-                                      to_string(VERSION_STRING) + "\r\n\r\n" + to_string(
-                                      resutil::load_file_string_crlf(IDR_README)) +
-                                      "\r\n" +
-                                      "Changelog (Highlights):\r\n" +
-                                      resutil::load_file_string_crlf(IDR_CHANGELOG)).c_str());
-        ImGui::PopStyleColor();
+            "spice2x (a fork of SpiceTools)\r\n"
+            "=========================\r\n" +
+            to_string(VERSION_STRING)).c_str());
+
+        ImGui::TextUnformatted("");
+
+        if (ImGui::Button(PROJECT_URL)) {
+            launch_url();
+        }
+
+        ImGui::TextUnformatted("");
+        ImGui::TextUnformatted(std::string(
+                resutil::load_file_string_crlf(IDR_README) +
+                "\r\n" +
+                "Changelog (Highlights):\r\n" +
+                resutil::load_file_string_crlf(IDR_CHANGELOG)).c_str());
     }
 
     void Config::build_licenses() {
-        auto time = get_system_milliseconds();
-        auto value = ((float) cos(time * 0.0005) + 1.f) * 0.5f;
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 1.f, 0.9f - value * 0.3f, 1.f));
         ImGui::TextUnformatted(resutil::load_file_string_crlf(IDR_LICENSES).c_str());
-        ImGui::PopStyleColor();
     }
 
     void Config::build_launcher() {
@@ -2156,15 +2224,11 @@ namespace overlay::windows {
                           "at the same time using pages.");
     }
 
-    void Config::vertical_align_text_column() {
-        /*
-         * see https://github.com/ocornut/imgui/issues/1284
-         * height of most widgets (like Button) is GetFontSize() + GetStyle().FramePadding.y * 2
-         * height of unformatted text is GetFontSize()
-         * by default, rows are top-aligned
-         * so we add FramePadding.y to the top of unformatted text for vertical centering. 
-         */
-        auto y = ImGui::GetCursorPosY() + ImGui::GetStyle().FramePadding.y;
-        ImGui::SetCursorPosY(y);
+    void Config::launch_url() {
+        // doing this on a separate thread to avoid polluting ImGui context
+        std::thread t([] {
+            ShellExecuteA(NULL, "open", PROJECT_URL, NULL, NULL, SW_SHOWNORMAL);
+        });
+        t.join();
     }
 }

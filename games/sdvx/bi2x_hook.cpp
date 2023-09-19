@@ -9,9 +9,11 @@
 #include "games/io.h"
 #include "launcher/options.h"
 #include "io.h"
+#include "games/sdvx/sdvx.h"
 
 namespace games::sdvx {
     constexpr bool BI2X_PASSTHROUGH = false;
+    bool BI2X_INITIALIZED = false;
 
     /*
      * class definitions
@@ -104,7 +106,6 @@ namespace games::sdvx {
         if (!BI2X_PASSTHROUGH) {
             custom_node = new AIO_IOB2_BI2X_UFC;
             memset(&custom_node->data, 0, sizeof(custom_node->data));
-
             return custom_node;
         } else {
 
@@ -163,18 +164,18 @@ namespace games::sdvx {
 
         // volume left
         if (GameAPI::Buttons::getState(RI_MGR, buttons[Buttons::VOL_L_Left])) {
-            VOL_L -= 64;
+            VOL_L -= ((uint16_t)DIGITAL_KNOB_SENS * 4);
         }
         if (GameAPI::Buttons::getState(RI_MGR, buttons[Buttons::VOL_L_Right])) {
-            VOL_L += 64;
+            VOL_L += ((uint16_t)DIGITAL_KNOB_SENS * 4);
         }
 
         // volume right
         if (GameAPI::Buttons::getState(RI_MGR, buttons[Buttons::VOL_R_Left])) {
-            VOL_R -= 64;
+            VOL_R -= ((uint16_t)DIGITAL_KNOB_SENS * 4);
         }
         if (GameAPI::Buttons::getState(RI_MGR, buttons[Buttons::VOL_R_Right])) {
-            VOL_R += 64;
+            VOL_R += ((uint16_t)DIGITAL_KNOB_SENS * 4);
         }
 
         // update volumes
@@ -364,6 +365,7 @@ namespace games::sdvx {
             aioNmgrIob2->pAIO_NMGR_IOB_BeginManage = AIO_NMGR_IOB_BeginManageStub;
         }
         log_info("bi2x_hook", "aioNMgrIob2_Create");
+        BI2X_INITIALIZED = true;
         return &aioNmgrIob2;
     }
 

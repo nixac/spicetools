@@ -84,7 +84,7 @@ struct fmt::formatter<fmt_hresult> {
     logger::push(LOG_FORMAT("F", module, format_str, ## __VA_ARGS__), logger::Style::RED); \
     \
     launcher::stop_subsystems(); \
-    Sleep(2000); \
+    Sleep(30000); \
     launcher::kill(); \
     std::terminate(); \
 } ((void) 0 )

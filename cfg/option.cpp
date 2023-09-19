@@ -68,17 +68,32 @@ std::vector<std::string> Option::values_text() const {
     return values;
 }
 
-int Option::value_int() const {
+uint32_t Option::value_uint32() const {
     if (this->definition.type != OptionType::Integer && this->definition.type != OptionType::Enum) {
-        log_fatal("option", "value_int() called on {}/{}", this->definition.title, this->definition.type);
+        log_fatal("option", "invalid call: value_uint32() called on {}/{}", this->definition.title, this->definition.type);
         return 0;
     }
     char *p;
     auto res = strtol(this->value.c_str(), &p, 10);
     if (*p) {
-        log_fatal("option", "tried to convert {} to integer ({})", this->value, this->definition.title);
+        log_fatal("option", "failed to convert {} to unsigned integer (option: {})", this->value, this->definition.title);
         return 0;
     } else {
         return res;
     }
+}
+
+uint64_t Option::value_hex64() const {
+    if (this->definition.type != OptionType::Hex) {
+        log_fatal("option", "invalid call: value_hex() called on {}/{}", this->definition.title, this->definition.type);
+        return 0;
+    }
+
+    uint64_t affinity = 0;
+    try {
+        affinity = std::stoull(this->value.c_str(), nullptr, 16);
+    } catch (const std::exception &ex) {
+        log_fatal("option", "failed to parse {} as hexadecimal (option: {})", this->value, this->definition.title);
+    }
+    return affinity;
 }

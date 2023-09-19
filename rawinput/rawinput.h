@@ -16,6 +16,8 @@ namespace rawinput {
     // settings
     extern bool NOLEGACY;
 
+    extern uint8_t HID_LIGHT_BRIGHTNESS;
+
     struct DeviceCallback {
         void *data;
         std::function<void(void*, Device*)> f;

@@ -1,107 +1,55 @@
 #undef CINTERFACE
 
 #include "sdvx_sub.h"
-
-#include <fmt/format.h>
-
-#include "games/io.h"
-#include "hooks/graphics/backends/d3d9/d3d9_backend.h"
-#include "hooks/graphics/backends/d3d9/d3d9_device.h"
-#include "util/logging.h"
+#include "games/sdvx/sdvx.h"
 
 namespace overlay::windows {
 
-    const ImVec4 YELLOW(1.f, 1.f, 0.f, 1.f);
-    const ImVec4 WHITE(1.f, 1.f, 1.f, 1.f);
+    SDVXSubScreen::SDVXSubScreen(SpiceOverlay *overlay) : GenericSubScreen(overlay) {
+        this->title = "SDVX Sub Screen";
 
-    SDVXSubScreen::SDVXSubScreen(SpiceOverlay *overlay) : Window(overlay), device(overlay->get_device()) {
-    	this->draws_window = false;
-        this->title = "Sub Screen";
-        this->toggle_button = games::OverlayButtons::ToggleSubScreen;
+        const auto padding = ImGui::GetFrameHeight() / 2;
 
-        this->texture_size = ImVec2(0, 0);
+        this->init_size = ImVec2(ImGui::GetIO().DisplaySize.x - (padding * 2), 0.f);
+        this->init_size.y = (this->init_size.x * 9 / 16) + ImGui::GetFrameHeight();
+
+        this->init_pos = ImVec2(ImGui::GetIO().DisplaySize.x / 2 - this->init_size.x / 2, 0);
+        switch (games::sdvx::OVERLAY_POS) {
+            case games::sdvx::SDVX_OVERLAY_TOP:
+                this->init_pos.y = padding;
+                break;
+            case games::sdvx::SDVX_OVERLAY_BOTTOM:
+                this->init_pos.y = ImGui::GetIO().DisplaySize.y - this->init_size.y - padding;
+                break;
+            case games::sdvx::SDVX_OVERLAY_MIDDLE:
+            default:
+                this->init_pos.y = (ImGui::GetIO().DisplaySize.y / 2) - (this->init_size.y / 2);
+                break;
+        }
     }
 
-    void SDVXSubScreen::build_content() {
-        this->draw_texture();
-
-		/*
-        if (this->status_message.has_value()) {
-            ImGui::TextColored(YELLOW, "%s", this->status_message.value().c_str());
-        } else if (this->texture) {
-            ImGui::TextColored(WHITE, "Successfully acquired surface texture");
-        } else {
-            ImGui::TextColored(YELLOW, "Failed to acquire surface texture");
-        }
-        */
-    }
-
-    bool SDVXSubScreen::build_texture(IDirect3DSurface9 *surface) {
-        HRESULT hr;
-
-        D3DSURFACE_DESC desc {};
-        hr = surface->GetDesc(&desc);
-        if (FAILED(hr)) {
-            this->status_message = fmt::format("Failed to get surface descriptor, hr={}", FMT_HRESULT(hr));
-            return false;
-        }
-
-        hr = this->device->CreateTexture(desc.Width, desc.Height, 0, desc.Usage, desc.Format,
-                desc.Pool, &this->texture, nullptr);
-        if (FAILED(hr)) {
-            this->status_message = fmt::format("Failed to create render target, hr={}", FMT_HRESULT(hr));
-            return false;
-        }
-
-        this->texture_size = ImVec2(1080, 608);
-
-        return true;
-    }
-
-    void SDVXSubScreen::draw_texture() {
-        HRESULT hr;
-
-        auto surface = graphics_d3d9_ldj_get_sub_screen();
-        if (surface == nullptr) {
+    void SDVXSubScreen::touch_transform(const ImVec2 xy_in, LONG *x_out, LONG *y_out) {
+        if (!this->get_active()) {
             return;
         }
+        
+        // SDVX Valkyrie cab needs math to make things work
+        // what the game expects from touch screen:
+        // [1080, 0     1920, 1080]
+        // [0, 0           0, 1920]
 
-        if (this->texture == nullptr) {
-            if (!this->build_texture(surface)) {
-                this->texture = nullptr;
-                this->texture_size = ImVec2(0, 0);
+        // actual cursor position given by x_in (on the overlay, normalized):
+        // [0, 0           1, 0]
+        // [0, 1           1, 1]
 
-                surface->Release();
-                return;
-            }
-        }
+        // Basically, the game operates on rotated coordinates, but on top of that,
+        // it needs to be adjusted so they match up with the subscreen overlay.
 
-        IDirect3DSurface9 *texture_surface = nullptr;
-        hr = this->texture->GetSurfaceLevel(0, &texture_surface);
-        if (FAILED(hr)) {
-            this->status_message = fmt::format("Failed to get texture surface, hr={}", FMT_HRESULT(hr));
+        // so the math is:
+        // Xin(0, 1) => Yout(0, 1920)
+        // Yin(0, 1) => Xout(1080, 0)
 
-            surface->Release();
-            return;
-        }
-
-        hr = this->device->StretchRect(surface, nullptr, texture_surface, nullptr, D3DTEXF_NONE);
-        if (FAILED(hr)) {
-            this->status_message = fmt::format("Failed to copy back buffer contents, hr={}", FMT_HRESULT(hr));
-
-            surface->Release();
-            texture_surface->Release();
-            return;
-        }
-
-        surface->Release();
-        texture_surface->Release();
-
-        ImGui::GetBackgroundDrawList()->AddImage(
-                reinterpret_cast<void *>(this->texture),
-                ImVec2(0, 0),
-                this->texture_size,
-                ImVec2(0, 0),
-                ImVec2(1, 1));
+        *x_out = ImGui::GetIO().DisplaySize.x * (1.f - xy_in.y);
+        *y_out = ImGui::GetIO().DisplaySize.y * xy_in.x;
     }
 }

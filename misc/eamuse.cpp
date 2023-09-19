@@ -7,6 +7,7 @@
 #include "cfg/config.h"
 #include "games/io.h"
 #include "rawinput/rawinput.h"
+#include "games/sdvx/sdvx.h"
 #include "util/logging.h"
 #include "util/time.h"
 #include "util/utils.h"
@@ -296,6 +297,13 @@ uint16_t eamuse_get_keypad_state(size_t unit) {
 
     // check unit
     if (unit >= std::size(KEYPAD_STATE)) {
+        return 0;
+    }
+    
+    // keypad disabled for KFC in BI2X mode, since the game won't handle it correctly
+    // this check for IO is necessary (as opposed to just doing a check for Valkyrie cab mode)
+    // because there are hex edits that allow you to use legacy (KFC/BIO2) IO while in Valk mode.
+    if (avs::game::is_model("KFC") && games::sdvx::BI2X_INITIALIZED) {
         return 0;
     }
 

@@ -15,6 +15,7 @@
 #include "acioemu/handle.h"
 #include "avs/core.h"
 #include "avs/game.h"
+#include "cfg/configurator.h"
 #include "games/io.h"
 #include "hooks/avshook.h"
 #include "hooks/cfgmgr32hook.h"
@@ -23,6 +24,7 @@
 #include "hooks/setupapihook.h"
 #include "hooks/sleephook.h"
 #include "launcher/options.h"
+#include "touch/touch.h"
 #include "misc/wintouchemu.h"
 #include "misc/eamuse.h"
 #include "util/detour.h"
@@ -56,15 +58,19 @@ namespace games::iidx {
     bool FLIP_CAMS = false;
     bool DISABLE_CAMS = false;
     bool TDJ_MODE = false;
+    bool FORCE_720P = false;
     std::optional<std::string> SOUND_OUTPUT_DEVICE = std::nullopt;
     std::optional<std::string> ASIO_DRIVER = std::nullopt;
+    uint8_t DIGITAL_TT_SENS = 4;
+    std::optional<std::string> SUBSCREEN_OVERLAY_SIZE = std::nullopt;
 
     // states
     static HKEY real_asio_reg_handle = nullptr;
     static HKEY real_asio_device_reg_handle = nullptr;
     static uint16_t IIDXIO_TT_STATE[2]{};
-    static uint16_t IIDXIO_TT_DIRECTION[2]{};
+    static int8_t IIDXIO_TT_DIRECTION[2]{1, 1};
     static bool IIDXIO_TT_PRESSED[2]{};
+    static bool IIDXIO_TT_ALT_PRESSED[2]{};
     char IIDXIO_LED_TICKER[10] = {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '\x00'};
     bool IIDXIO_LED_TICKER_READONLY = false;
     std::mutex IIDX_LED_TICKER_LOCK;
@@ -445,8 +451,8 @@ namespace games::iidx {
                 // need to hook `avs2-core.dll` so AVS win32fs operations go through rom hook
                 devicehook_init(avs::core::DLL_INSTANCE);
 
-                // hook touch window
                 wintouchemu::FORCE = true;
+                wintouchemu::INJECT_MOUSE_AS_WM_TOUCH = true;
                 wintouchemu::hook_title_ends("beatmania IIDX", "main", avs::game::DLL_INSTANCE);
 
                 // prevent crash on TDJ mode without correct DLL
@@ -538,8 +544,21 @@ namespace games::iidx {
         if (DISABLE_CAMS) {
             SetEnvironmentVariable("CONNECT_CAMERA", "0");
         }
-        if (SOUND_OUTPUT_DEVICE.has_value()) {
-            SetEnvironmentVariable("SOUND_OUTPUT_DEVICE", SOUND_OUTPUT_DEVICE.value().c_str());
+
+        this->detect_sound_output_device();
+        
+        // check bad model name
+        if (!cfg::CONFIGURATOR_STANDALONE && avs::game::is_model("TDJ")) {
+            log_fatal(
+                "iidx",
+                "BAD MODEL NAME ERROR\n\n\n"
+                "!!! model name set to TDJ, this is WRONG and will break your game !!!\n"
+                "If you are trying to boot IIDX with Lightning Model mode, please do the following instead:\n"
+                "    Revert your changes to XML file so it says <model __type=\"str\">LDJ</model>\n"
+                "    In SpiceCfg, enable 'IIDX TDJ Mode' or provide -iidxtdj flag in command line\n"
+                "    Apply any applicable settings / patches / hex edits\n"
+                "!!! model name set to TDJ, this is WRONG and will break your game !!!\n\n\n"
+                );
         }
     }
 
@@ -547,6 +566,53 @@ namespace games::iidx {
         Game::detach();
 
         devicehook_dispose();
+    }
+
+    void IIDXGame::detect_sound_output_device() {
+        // if the user specified a value (other than auto), use it as the environment var
+        // probably "wasapi" or "asio", but it's not explicitly checked here for forward compat
+        if (SOUND_OUTPUT_DEVICE.has_value() && SOUND_OUTPUT_DEVICE.value() != "auto") {
+            log_info(
+                "iidx",
+                "using user-supplied \"{}\" for SOUND_OUTPUT_DEVICE",
+                SOUND_OUTPUT_DEVICE.value());
+            SetEnvironmentVariable("SOUND_OUTPUT_DEVICE", SOUND_OUTPUT_DEVICE.value().c_str());
+            return;
+        }
+
+        // automatic detection
+        bool use_asio = false;
+        log_misc("iidx", "auto-detect SOUND_OUTPUT_DEVICE...");
+        if (ASIO_DRIVER.has_value()) {
+            log_misc(
+                "iidx",
+                "-iidxasio is set to \"{}\", use asio for SOUND_OUTPUT_DEVICE",
+                ASIO_DRIVER.value());
+            use_asio = true;
+        } else {
+            HKEY subkey;
+            LSTATUS result;
+            result = RegOpenKey(HKEY_LOCAL_MACHINE, "SOFTWARE\\ASIO\\XONAR SOUND CARD(64)", &subkey);
+            if (result == ERROR_SUCCESS) {
+                RegCloseKey(subkey);
+                use_asio = true;
+                log_misc(
+                    "iidx",
+                    "found HKLM\\SOFTWARE\\ASIO\\XONAR SOUND CARD(64), using asio for SOUND_OUTPUT_DEVICE");
+            }
+        }
+
+        const char* device = "wasapi";
+        if (use_asio) {
+            device = "asio";
+        }
+        log_info("iidx", "SOUND_OUTPUT_DEVICE set to {}", device);
+        log_info(
+            "iidx",
+            "SOUND_OUTPUT_DEVICE only affects IIDX27+ and ignored by older games. "
+            "If {} is not what you wanted, you can override it with -iidxsounddevice option",
+            device);
+        SetEnvironmentVariable("SOUND_OUTPUT_DEVICE", device);
     }
 
     uint32_t get_pad() {
@@ -701,7 +767,8 @@ namespace games::iidx {
     unsigned char get_tt(int player, bool slow) {
 
         // check change value for high/low precision
-        uint16_t change = slow ? (uint16_t) 1 : (uint16_t) 4;
+        uint16_t change =
+            slow ? (uint16_t) (DIGITAL_TT_SENS / 4) : (uint16_t) DIGITAL_TT_SENS;
 
         // check player number
         if (player > 1)
@@ -713,8 +780,11 @@ namespace games::iidx {
                 player != 0 ? Buttons::P2_TTPlus : Buttons::P1_TTPlus));
         bool ttm = GameAPI::Buttons::getState(RI_MGR, buttons.at(
                 player != 0 ? Buttons::P2_TTMinus : Buttons::P1_TTMinus));
+
         bool ttpm = GameAPI::Buttons::getState(RI_MGR, buttons.at(
                 player != 0 ? Buttons::P2_TTPlusMinus : Buttons::P1_TTPlusMinus));
+        bool ttpm_alt = GameAPI::Buttons::getState(RI_MGR, buttons.at(
+                player != 0 ? Buttons::P2_TTPlusMinusAlt : Buttons::P1_TTPlusMinusAlt));
 
         // TT+
         if (ttp)
@@ -725,19 +795,16 @@ namespace games::iidx {
             IIDXIO_TT_STATE[player] -= change;
 
         // TT+/-
-        if (ttpm) {
-            if (IIDXIO_TT_DIRECTION[player] != 0u) {
-                if (!IIDXIO_TT_PRESSED[player])
-                    IIDXIO_TT_DIRECTION[player] = 0;
-                IIDXIO_TT_STATE[player] += change;
-            } else {
-                if (!IIDXIO_TT_PRESSED[player])
-                    IIDXIO_TT_DIRECTION[player] = 1;
-                IIDXIO_TT_STATE[player] -= change;
-            }
-            IIDXIO_TT_PRESSED[player] = true;
-        } else
-            IIDXIO_TT_PRESSED[player] = false;
+        bool ttpm_rising_edge = !IIDXIO_TT_PRESSED[player] && ttpm;
+        bool ttpm_alt_rising_edge = !IIDXIO_TT_ALT_PRESSED[player] && ttpm_alt;
+        if (ttpm_rising_edge || ttpm_alt_rising_edge) {
+            IIDXIO_TT_DIRECTION[player] *= -1;
+        }
+        if (ttpm || ttpm_alt) {
+            IIDXIO_TT_STATE[player] += (change * IIDXIO_TT_DIRECTION[player]);
+        }
+        IIDXIO_TT_PRESSED[player] = ttpm;
+        IIDXIO_TT_ALT_PRESSED[player] = ttpm_alt;
 
         // raw input
         auto &analogs = get_analogs();
@@ -792,5 +859,9 @@ namespace games::iidx {
 
     const char* get_16seg() {
         return IIDXIO_LED_TICKER;
+    }
+
+    bool is_tdj_fhd() {
+        return TDJ_MODE && avs::game::is_ext(2022101900, MAXINT);
     }
 }

@@ -148,6 +148,8 @@ namespace logger {
         THREAD = new std::thread([] {
             std::unique_lock<std::mutex> lock(EVENT_MUTEX);
 
+            SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+
             // main loop
             while (RUNNING) {
 

@@ -10,9 +10,11 @@ namespace overlay {
     class Window {
     public:
         virtual ~Window();
-        virtual const ImVec2 initial_pos() {
-            return this->init_pos;
-        }
+
+        // an opportunity to calculate initial window position and size within the ImGui
+        // window context, since it may not be possible in the Window constructor
+        virtual void calculate_initial_window() {}
+
         virtual void build_content() = 0;
         virtual void update();
         virtual void after_render() {};
@@ -21,7 +23,6 @@ namespace overlay {
         void toggle_active();
         void set_active(bool active);
         bool get_active();
-
     protected:
 
         // state
@@ -30,7 +31,9 @@ namespace overlay {
         std::vector<Window*> children;
 
         // settings
+        bool remove_window_padding = false;
         bool draws_window = true;
+        ImGuiSizeCallback resize_callback = nullptr;
         std::string title = "Title";
         ImGuiWindowFlags flags = 0;
         size_t toggle_button = ~0u;

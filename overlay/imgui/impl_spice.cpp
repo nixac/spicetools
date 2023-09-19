@@ -313,7 +313,10 @@ void ImGui_ImplSpice_NewFrame() {
 
                         // trigger
                         io.KeysDown[vKey] |= state;
-                        if (!KeysDownOld[vKey] && state) {
+
+                        // generate character input, but only if WM_CHAR didn't take over the
+                        // functionality
+                        if (!overlay::USE_WM_CHAR_FOR_IMGUI_CHAR_INPUT && !KeysDownOld[vKey] && state) {
                             UCHAR buf[2];
                             auto ret = ToAscii(
                                     static_cast<UINT>(vKey),
@@ -323,7 +326,7 @@ void ImGui_ImplSpice_NewFrame() {
                                     0);
                             if (ret > 0) {
                                 for (int i = 0; i < ret; i++) {
-                                    overlay::OVERLAY->input_char(buf[i], true);
+                                    overlay::OVERLAY->input_char(buf[i]);
                                 }
                             }
                         }
