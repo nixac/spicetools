@@ -1,7 +1,6 @@
 .vscode/*
 
 # JetBrains IDEs
-.idea
 .idea_modules
 *.iws
 
