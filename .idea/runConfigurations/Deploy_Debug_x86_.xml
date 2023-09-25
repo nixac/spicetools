@@ -1,0 +1,23 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Deploy[Debug_x86]" type="ShConfigurationType">
+    <option name="SCRIPT_TEXT" value="" />
+    <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
+    <option name="SCRIPT_PATH" value="$PROJECT_DIR$/cmake.sh" />
+    <option name="SCRIPT_OPTIONS" value="deploy all" />
+    <option name="INDEPENDENT_SCRIPT_WORKING_DIRECTORY" value="true" />
+    <option name="SCRIPT_WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <option name="INDEPENDENT_INTERPRETER_PATH" value="true" />
+    <option name="INTERPRETER_PATH" value="/usr/bin/bash" />
+    <option name="INTERPRETER_OPTIONS" value="" />
+    <option name="EXECUTE_IN_TERMINAL" value="true" />
+    <option name="EXECUTE_SCRIPT_FILE" value="true" />
+    <envs>
+      <env name="_G_clean" value="false" />
+      <env name="_G_debug" value="true" />
+    </envs>
+    <method v="2">
+      <option name="RunConfigurationTask" enabled="false" run_configuration_name="spicetools_cfg" run_configuration_type="CMakeRunConfiguration" run_configuration_target="CMakeBuildProfile:Debug_x86[WIN_32]" />
+      <option name="RunConfigurationTask" enabled="false" run_configuration_name="spicetools_spice" run_configuration_type="CMakeRunConfiguration" run_configuration_target="CMakeBuildProfile:Debug_x86[WIN_32]" />
+    </method>
+  </configuration>
+</component>

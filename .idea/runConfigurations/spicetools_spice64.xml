@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="spicetools_spice64" type="CMakeRunConfiguration" factoryName="Application" folderName="64" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="spicetools" TARGET_NAME="spicetools_spice64" CONFIG_NAME="Release_x64[WIN_32]" RUN_TARGET_PROJECT_NAME="spicetools" RUN_TARGET_NAME="spicetools_spice64">
+  <configuration default="false" name="spicetools_spice64" type="CMakeRunConfiguration" factoryName="Application" folderName="64" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="spicetools" TARGET_NAME="spicetools_spice64" CONFIG_NAME="Release_x64[WIN_32]" RUN_PATH="/bin/true">
     <method v="2">
       <option name="CMake.Explicit.Target" predefinedTargetName="spicetools_stubs_kbt64" />
       <option name="CMake.Explicit.Target" predefinedTargetName="spicetools_stubs_kld64" />

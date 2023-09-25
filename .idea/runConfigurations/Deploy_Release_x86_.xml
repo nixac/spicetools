@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Deploy[Release]" type="ShConfigurationType">
+  <configuration default="false" name="Deploy[Release_x86]" type="ShConfigurationType">
     <option name="SCRIPT_TEXT" value="" />
     <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
     <option name="SCRIPT_PATH" value="$PROJECT_DIR$/cmake.sh" />
@@ -15,6 +15,9 @@
       <env name="_G_clean" value="false" />
       <env name="_G_debug" value="false" />
     </envs>
-    <method v="2" />
+    <method v="2">
+      <option name="RunConfigurationTask" enabled="true" run_configuration_name="spicetools_cfg" run_configuration_type="CMakeRunConfiguration" run_configuration_target="CMakeBuildProfile:Release_x86[WIN_32]" />
+      <option name="RunConfigurationTask" enabled="false" run_configuration_name="spicetools_spice" run_configuration_type="CMakeRunConfiguration" run_configuration_target="CMakeBuildProfile:Release_x86[WIN_32]" />
+    </method>
   </configuration>
 </component>
