@@ -132,7 +132,7 @@ static SampleType convert_asio_sample_type(AsioSampleType type) {
     }
 }
 
-AsioBackend::AsioBackend() {
+AsioBackend::AsioBackend() : format_(hooks::audio::FORMAT) {
     this->asio_thread = std::thread([this]() {
         std::unique_lock<std::mutex> lock_handle(this->asio_thread_state_lock);
 
@@ -750,7 +750,6 @@ HRESULT AsioBackend::on_initialize(
 {
     AsioError result;
 
-    copy_wave_format(&this->format_, pFormat);
     memcpy(&this->last_checked_format, &this->format_, sizeof(this->format_));
 
     if (!this->asio_thread_initialized) {

@@ -3,26 +3,34 @@
 #include "hooks/audio/audio.h"
 #include "hooks/audio/backends/wasapi/audio_client.h"
 #include "hooks/audio/backends/wasapi/defs.h"
+#include "hooks/audio/util.h"
+#include "hooks/audio/buffer.h"
 
 static REFERENCE_TIME WASAPI_TARGET_REFTIME = TARGET_REFTIME;
 
 HRESULT WaveOutBackend::init(uint32_t buffer_size) {
-    auto &format = hooks::audio::FORMAT.Format;
-    format.wFormatTag = WAVE_FORMAT_PCM;
+    MMRESULT ret;
 
-    log_info("audio::wave_out", "initializing waveOut backend with {} channels, {} Hz, {}-bit",
-             format.nChannels,
-             format.nSamplesPerSec,
-             format.wBitsPerSample);
-    log_info("audio::wave_out", "... nBlockAlign     : {} bytes", format.nBlockAlign);
-    log_info("audio::wave_out", "... nAvgBytesPerSec : {} bytes", format.nAvgBytesPerSec);
+    if (format_.Format.nSamplesPerSec == 0)
+    {
+        log_warning("audio::wave_out", "format_ condition race");
+        return static_cast<HRESULT>(MMSYSERR_ERROR);
+    }
+    hooks::audio::FORMAT.Format.wFormatTag = WAVE_FORMAT_PCM;
+    log_info("audio::wave_out", "initializing waveOut backend with {} channels, {} Hz, {}-bit, {} format",
+             format_.Format.nChannels,
+             format_.Format.nSamplesPerSec,
+             format_.Format.wBitsPerSample,
+             format_.Format.wFormatTag);
+    log_info("audio::wave_out", "... nBlockAlign     : {} bytes", format_.Format.nBlockAlign);
+    log_info("audio::wave_out", "... nAvgBytesPerSec : {} bytes", format_.Format.nAvgBytesPerSec);
     log_info("audio::wave_out", "... buffer reftime  : {} ms", WASAPI_TARGET_REFTIME / 10000.f);
     log_info("audio::wave_out", "... buffer count    : {} buffers", _countof(this->hdrs));
 
-    MMRESULT ret = waveOutOpen(
+    ret = waveOutOpen(
             &this->handle,
             WAVE_MAPPER,
-            reinterpret_cast<const WAVEFORMATEX *>(&hooks::audio::FORMAT.Format),
+            reinterpret_cast<const WAVEFORMATEX *>(&format_.Format),
             reinterpret_cast<DWORD_PTR>(this->dispatcher_event),
             reinterpret_cast<DWORD_PTR>(nullptr),
             CALLBACK_EVENT);
@@ -35,6 +43,7 @@ HRESULT WaveOutBackend::init(uint32_t buffer_size) {
     }
 
     // initialize buffers
+    log_info("audio::wave_out", "... device handle   : {}", fmt::ptr(this->handle));
     for (auto &hdr : this->hdrs) {
         memset(&hdr, 0, sizeof(hdr));
         hdr.lpData = new char[buffer_size] {};
@@ -70,7 +79,7 @@ HRESULT WaveOutBackend::init(uint32_t buffer_size) {
 }
 
 const WAVEFORMATEXTENSIBLE &WaveOutBackend::format() const noexcept {
-    return hooks::audio::FORMAT;
+    return format_;
 }
 
 HRESULT WaveOutBackend::on_initialize(
@@ -88,6 +97,8 @@ HRESULT WaveOutBackend::on_initialize(
             AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
     *hnsBufferDuration = WASAPI_TARGET_REFTIME;
     *hnsPeriodicity = WASAPI_TARGET_REFTIME;
+
+    log_info("audio::wave_out", "on_initialize");
 
     // this backend only supports stereo audio
     if (pFormat->nChannels > 2) {
@@ -115,7 +126,7 @@ HRESULT WaveOutBackend::on_get_current_padding(std::optional<uint32_t> &padding_
         }
     }
 
-    auto frames = static_cast<uint32_t>(queued_bytes / hooks::audio::FORMAT.Format.nBlockAlign);
+    auto frames = static_cast<uint32_t>(queued_bytes / format_.Format.nBlockAlign);
     //log_info("audio::wave_out", "queued_bytes = {}, frames = {}", queued_bytes, frames);
 
     padding_frames = frames;
@@ -136,6 +147,7 @@ HRESULT WaveOutBackend::on_is_format_supported(
         return S_OK;
     }
 
+    //return waveOutOpen(nullptr, WAVE_MAPPER, reinterpret_cast<const WAVEFORMATEX *>(&format_.Format), NULL, NULL, WAVE_FORMAT_QUERY) == MMSYSERR_NOERROR ? S_OK : AUDCLNT_E_UNSUPPORTED_FORMAT;
     return AUDCLNT_E_UNSUPPORTED_FORMAT;
 }
 HRESULT WaveOutBackend::on_get_mix_format(WAVEFORMATEX **pp_device_format) noexcept {
@@ -166,17 +178,20 @@ HRESULT WaveOutBackend::on_set_event_handle(HANDLE *event_handle) {
 }
 
 HRESULT WaveOutBackend::on_get_buffer(uint32_t num_frames_requested, BYTE **ppData) {
-    auto buffer_size = hooks::audio::FORMAT.Format.nBlockAlign * num_frames_requested;
+    size_t buffer_size = format_.Format.nBlockAlign * num_frames_requested;
 
     if (!this->initialized) {
         this->init(buffer_size);
     }
 
+    const size_t converted_size = required_buffer_size(num_frames_requested, format_.Format.nChannels, SampleType::SINT_16);
+    const size_t max_size = std::max(buffer_size, converted_size);
+
     // wait for a free slot
     WaitForSingleObject(this->dispatcher_event, INFINITE);
 
     // allocate temporary sound buffer
-    this->active_sound_buffer = reinterpret_cast<BYTE *>(CoTaskMemAlloc(buffer_size));
+    this->active_sound_buffer = reinterpret_cast<BYTE *>(CoTaskMemAlloc(max_size));
 
     // hand the buffer to the callee
     *ppData = this->active_sound_buffer;
@@ -221,4 +236,8 @@ HRESULT WaveOutBackend::on_release_buffer(uint32_t num_frames_written, DWORD dwF
     SetEvent(this->relay_event);
 
     return S_OK;
+}
+WaveOutBackend::WaveOutBackend() : format_(hooks::audio::FORMAT)
+{
+
 }

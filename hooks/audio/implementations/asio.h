@@ -144,7 +144,7 @@ private:
     SampleType asio_sample_type = SampleType::UNSUPPORTED;
 
     std::atomic_bool started = false;
-    WAVEFORMATEXTENSIBLE format_ {};
+    const WAVEFORMATEXTENSIBLE &format_;
     WAVEFORMATEXTENSIBLE last_checked_format {};
 
     //std::vector<BYTE> last_sound_buffer;

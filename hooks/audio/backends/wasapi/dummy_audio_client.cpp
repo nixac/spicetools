@@ -79,6 +79,9 @@ HRESULT STDMETHODCALLTYPE DummyIAudioClient::Initialize(
     log_info("audio::wasapi", "... hnsPeriodicity    : {}", hnsPeriodicity);
     print_format(pFormat);
 
+    log_info("audio::wasapi", "IAudioClient::Initialize forwarding format");
+    copy_wave_format(&hooks::audio::FORMAT, pFormat);
+
     CHECK_RESULT(this->backend->on_initialize(
         &ShareMode,
         &StreamFlags,

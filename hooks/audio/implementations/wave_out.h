@@ -10,6 +10,7 @@
 
 struct WaveOutBackend final : AudioBackend {
 public:
+    explicit WaveOutBackend();
     ~WaveOutBackend() final = default;
 
     HRESULT init(uint32_t buffer_size);
@@ -49,6 +50,7 @@ public:
 private:
     WrappedIAudioClient *client;
 
+    const WAVEFORMATEXTENSIBLE &format_;
     bool initialized = false;
     HANDLE relay_event = nullptr;
     HANDLE dispatcher_event = nullptr;
