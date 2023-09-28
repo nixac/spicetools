@@ -417,6 +417,7 @@ set(SOURCE_FILES ${SOURCE_FILES}
         hooks/audio/backends/wasapi/util.cpp
         hooks/audio/implementations/asio.cpp
         hooks/audio/implementations/wave_out.cpp
+        hooks/audio/implementations/none.cpp
         hooks/avshook.cpp
         hooks/cfgmgr32hook.cpp
         hooks/debughook.cpp

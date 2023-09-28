@@ -11,6 +11,7 @@ namespace hooks::audio {
     enum class Backend {
         Asio,
         WaveOut,
+        None
     };
 
     extern bool ENABLED;
@@ -27,6 +28,8 @@ namespace hooks::audio {
             return Backend::Asio;
         } else if (_stricmp(value, "waveout") == 0) {
             return Backend::WaveOut;
+        } else if (_stricmp(value, "none") == 0) {
+            return Backend::None;
         }
 
         return std::nullopt;

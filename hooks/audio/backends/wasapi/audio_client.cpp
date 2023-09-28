@@ -9,6 +9,7 @@
 #include "hooks/audio/backends/wasapi/util.h"
 #include "hooks/audio/implementations/asio.h"
 #include "hooks/audio/implementations/wave_out.h"
+#include "hooks/audio/implementations/none.h"
 //#include "util/co_task_mem_ptr.h"
 
 #include "defs.h"
@@ -159,6 +160,9 @@ IAudioClient *wrap_audio_client(IAudioClient *audio_client) {
                 break;
             case hooks::audio::Backend::WaveOut:
                 backend = new WaveOutBackend();
+                break;
+            case hooks::audio::Backend::None:
+                backend = new NoneBackend();
                 break;
             default:
                 break;
