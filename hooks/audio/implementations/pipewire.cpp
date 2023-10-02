@@ -34,7 +34,7 @@ HRESULT PipewireBackend::on_initialize(
     if (!bmsw_) log_fatal("audio::pipewire", "Library not found: '{}'", (MODULE_PATH / "bmsound-wine.dll").string());
     auto pipewireinit = (BmswClientInit_t)GetProcAddress(bmsw_, "BmswClientInit");
     if (!pipewireinit) log_fatal("audio::pipewire", "Library invalid: '{}'", (MODULE_PATH / "bmsound-wine.dll").string());
-    internal_ = std::thread(pipewireinit,"GAME TITLE");
+    internal_ = std::thread(pipewireinit,GAME_INSTANCE->title());
 
     return S_OK;
 }

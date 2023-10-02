@@ -7,6 +7,7 @@
 #include <windows.h>
 
 #include "cfg/option.h"
+#include "games/game.h"
 
 namespace rawinput {
     class RawInputManager;
@@ -21,6 +22,7 @@ extern std::string LOG_FILE_PATH;
 extern int LAUNCHER_ARGC;
 extern char **LAUNCHER_ARGV;
 extern std::unique_ptr<std::vector<Option>> LAUNCHER_OPTIONS;
+extern games::Game *GAME_INSTANCE;
 
 extern std::unique_ptr<api::Controller> API_CONTROLLER;
 extern std::unique_ptr<rawinput::RawInputManager> RI_MGR;

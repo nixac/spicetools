@@ -15,6 +15,7 @@ namespace games {
 
         // where the main magic will happen
         virtual void attach();
+        virtual const char *title();
 
         // optional
         virtual void pre_attach();

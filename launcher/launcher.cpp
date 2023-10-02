@@ -108,6 +108,7 @@ std::string LOG_FILE_PATH = "";
 int LAUNCHER_ARGC = 0;
 char **LAUNCHER_ARGV = nullptr;
 std::unique_ptr<std::vector<Option>> LAUNCHER_OPTIONS;
+games::Game *GAME_INSTANCE = nullptr;
 std::string CARD_OVERRIDES[2];
 
 // sub-systems
@@ -1424,6 +1425,7 @@ int main_implementation(int argc, char *argv[]) {
         avs::core::set_default_heap_size("kamunity.dll");
         games.push_back(new games::bc::BCGame());
     }
+    GAME_INSTANCE = games.back();
 
     // apply user heap size, if defined
     if (user_heap_size > 0) {

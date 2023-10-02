@@ -5,6 +5,10 @@ games::Game::Game(std::string name) {
     this->name = name;
 }
 
+const char *games::Game::title() {
+    return this->name.c_str();
+}
+
 void games::Game::attach() {
     log_info("game", "attach: {}", name);
 }
