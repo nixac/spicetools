@@ -1108,7 +1108,7 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
             "Game must be outputting to WASAPI Exclusive mode for audio hook to work.",
         .type = OptionType::Enum,
         .category = "Audio",
-        .elements = {{"asio", "ASIO"}, {"waveout", "waveOut"},{"none", "None"}},
+        .elements = {{"asio", "ASIO"}, {"waveout", "waveOut"},{"pipewire", "Pipewire (Linux)"},{"none", "None"}},
     },
     {
         .title = "Spice Audio Hook ASIO Driver ID",

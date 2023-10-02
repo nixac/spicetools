@@ -418,6 +418,7 @@ set(SOURCE_FILES ${SOURCE_FILES}
         hooks/audio/implementations/asio.cpp
         hooks/audio/implementations/wave_out.cpp
         hooks/audio/implementations/none.cpp
+        hooks/audio/implementations/pipewire.cpp
         hooks/avshook.cpp
         hooks/cfgmgr32hook.cpp
         hooks/debughook.cpp
