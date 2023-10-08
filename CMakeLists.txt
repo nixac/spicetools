@@ -573,7 +573,7 @@ set(RESOURCE_FILES build/manifest.manifest build/manifest64.rc build/icon.rc cfg
 add_executable(spicetools_spice64 ${SOURCE_FILES} ${RESOURCE_FILES})
 target_link_libraries(spicetools_spice64
         PUBLIC d3d9 ws2_32 version comctl32 shlwapi iphlpapi hid secur32 setupapi psapi winmm winscard
-        PRIVATE fmt-header-only discord-rpc imgui hash-library minhook openvr_api64 lua_static imm32 dwmapi)
+        PRIVATE fmt-header-only discord-rpc imgui hash-library minhook openvr_api64 lua_static imm32 dwmapi ntdll)
 set_target_properties(spicetools_spice64 PROPERTIES PREFIX "")
 set_target_properties(spicetools_spice64 PROPERTIES OUTPUT_NAME "spice64")
 target_compile_definitions(spicetools_spice64 PRIVATE SPICE64=1)
