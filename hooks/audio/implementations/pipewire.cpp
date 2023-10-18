@@ -34,38 +34,31 @@
  * */
 
 /* Imports/Exports (refer to bmsound-wine.dll.spec) */
-typedef void (*BmswExperimentalProfile_t)(int);
+typedef void (*BmswConfigInit_t)(const char *);
+typedef void (*BmswExperimentalForceProfile_t)(const char *);
+typedef int(*BmswClientFormatIsSupported_t)(DWORD, DWORD, DWORD, void *);
+typedef int(*BmswClientFormatPeriodFPC_t)(void *);
+typedef REFERENCE_TIME(*BmswClientFormatPeriodWRT_t)(void *);
 typedef void *(*BmswClientCreate_t)(const char *, void *, void *);
 typedef int(*BmswClientStart_t)(void *);
 typedef int(*BmswClientStop_t)(void *);
 typedef int(*BmswClientDestroy_t)(void *);
 typedef unsigned char *(*BmswClientGetBuffer_t)(void *, uint32_t);
 typedef int(*BmswClientReleaseBuffer_t)(void *, uint32_t);
-typedef int(*BmswClientFormatSupported_t)(DWORD, DWORD, DWORD);
-typedef REFERENCE_TIME(*BmswClientWasapiPeriod_t)(void *);
 typedef void (*BmswClientUpdateCallback_t)(void *, void *, void *);
-static BmswExperimentalProfile_t BmswExperimentalProfile;
+static BmswConfigInit_t BmswConfigInit;
+[[maybe_unused]] static BmswExperimentalForceProfile_t BmswExperimentalForceProfile;
+static BmswClientFormatIsSupported_t BmswClientFormatIsSupported;
+static BmswClientFormatPeriodFPC_t BmswClientFormatPeriodFPC;
+static BmswClientFormatPeriodWRT_t BmswClientFormatPeriodWRT;
 static BmswClientCreate_t BmswClientCreate;
 static BmswClientStart_t BmswClientStart;
 static BmswClientStop_t BmswClientStop;
 static BmswClientDestroy_t BmswClientDestroy;
 static BmswClientGetBuffer_t BmswClientGetBuffer;
 static BmswClientReleaseBuffer_t BmswClientReleaseBuffer;
-static BmswClientFormatSupported_t BmswClientFormatSupported;
-static BmswClientWasapiPeriod_t BmswClientWasapiPeriod;
-static BmswClientUpdateCallback_t BmswClientUpdateCallback;
+[[maybe_unused]] static BmswClientUpdateCallback_t BmswClientUpdateCallback;
 static HMODULE bmsw_ = nullptr;
-enum profile_exp
-{
-    T_NONE = 0,
-    T_AUDIO_FORMAT,
-    T_NOTIF_CALLBACK,
-    T_NOTIF_SPICE,
-    T_TWIN_CURSOR,
-    T_SPOOFED_LOOP,
-    T_STATIC_SINE,
-    T_LAST
-};
 
 /* Audio init (unless specified otherwise, run once at start) */
 // Reports to game whether each requested audio format is available for device (first success return will be used)
@@ -82,18 +75,14 @@ HRESULT PipewireBackend::on_is_format_supported(AUDCLNT_SHAREMODE *ShareMode, co
     if (*ShareMode != AUDCLNT_SHAREMODE_EXCLUSIVE) return AUDCLNT_E_UNSUPPORTED_FORMAT;
 
     // Request format support from real backend (only accepts 44.1 kHz, stereo, 16-bits per channel for now)
-    return BmswClientFormatSupported(pFormat->nSamplesPerSec, pFormat->nChannels, pFormat->wBitsPerSample) == 0 ? S_OK : AUDCLNT_E_UNSUPPORTED_FORMAT;
+    return BmswClientFormatIsSupported(pFormat->nSamplesPerSec, pFormat->nChannels, pFormat->wBitsPerSample, nullptr) == 0 ? S_OK : AUDCLNT_E_UNSUPPORTED_FORMAT;
 }
 // Populate hnsPeriodicity, _INFO: runs before on_initialize, requires configured client stream data
 HRESULT PipewireBackend::on_get_device_period(REFERENCE_TIME *default_device_period, REFERENCE_TIME *minimum_device_period)
 {
     log_info("audio::pipewire", "{}", __FUNCTION__);
-    if (client_)
-    {
-        REFERENCE_TIME ref_time = BmswClientWasapiPeriod(client_);
-        *default_device_period = ref_time;
-        *minimum_device_period = ref_time;
-    }
+    *default_device_period = wrt_;
+    *minimum_device_period = wrt_;
 
     return S_OK;
 }
@@ -110,9 +99,8 @@ HRESULT PipewireBackend::on_initialize(AUDCLNT_SHAREMODE *ShareMode, DWORD *Stre
     log_info("audio::pipewire", "Client initialized: '{}'", fmt::ptr(client_));
 
     // Adjust WASAPI configuration visible to game (passed arguments are populated and should match that of last on_is_format_supported call)
-    auto ref_time = BmswClientWasapiPeriod(client_); //_INFO: this affects reported latency (1:100ns)
-    *hnsBufferDuration = ref_time;
-    *hnsPeriodicity = ref_time;
+    *hnsBufferDuration = wrt_;
+    *hnsPeriodicity = wrt_;
 
     //_TODO: Init info
     log_info("audio::asio", "Device Info:");
@@ -146,28 +134,35 @@ HRESULT PipewireBackend::on_start() noexcept
     BmswClientStart(client_);
     return S_OK;
 }
-PipewireBackend::PipewireBackend() : format_(hooks::audio::FORMAT), client_(nullptr)
+PipewireBackend::PipewireBackend() : relay_handle_(nullptr), format_(hooks::audio::FORMAT), client_(nullptr)
 {
     log_info("audio::pipewire", "{}", __FUNCTION__);
 
     // Initialize bmsound-wine.dll once
-    if (bmsw_) return;
-    if ((bmsw_ = libutils::try_library(MODULE_PATH / "bmsound-wine.dll")))
+    if (!bmsw_ && (bmsw_ = libutils::try_library(MODULE_PATH / "bmsound-wine.dll")))
     {
-        BmswExperimentalProfile = (BmswExperimentalProfile_t) GetProcAddress(bmsw_, "BmswExperimentalProfile");
+        BmswConfigInit = (BmswConfigInit_t) GetProcAddress(bmsw_, "BmswConfigInit");
+        BmswExperimentalForceProfile = (BmswExperimentalForceProfile_t) GetProcAddress(bmsw_, "BmswExperimentalForceProfile");
+        BmswClientFormatIsSupported = (BmswClientFormatIsSupported_t) GetProcAddress(bmsw_, "BmswClientFormatIsSupported");
+        BmswClientFormatPeriodWRT = (BmswClientFormatPeriodWRT_t) GetProcAddress(bmsw_, "BmswClientFormatPeriodWRT");
+        BmswClientFormatPeriodFPC = (BmswClientFormatPeriodFPC_t) GetProcAddress(bmsw_, "BmswClientFormatPeriodFPC");
         BmswClientCreate = (BmswClientCreate_t) GetProcAddress(bmsw_, "BmswClientCreate");
         BmswClientStart = (BmswClientStart_t) GetProcAddress(bmsw_, "BmswClientStart");
         BmswClientStop = (BmswClientStop_t) GetProcAddress(bmsw_, "BmswClientStop");
         BmswClientDestroy = (BmswClientDestroy_t) GetProcAddress(bmsw_, "BmswClientDestroy");
         BmswClientGetBuffer = (BmswClientGetBuffer_t) GetProcAddress(bmsw_, "BmswClientGetBuffer");
         BmswClientReleaseBuffer = (BmswClientReleaseBuffer_t) GetProcAddress(bmsw_, "BmswClientReleaseBuffer");
-        BmswClientFormatSupported = (BmswClientFormatSupported_t) GetProcAddress(bmsw_, "BmswClientFormatSupported");
-        BmswClientWasapiPeriod = (BmswClientWasapiPeriod_t) GetProcAddress(bmsw_, "BmswClientWasapiPeriod");
         BmswClientUpdateCallback = (BmswClientUpdateCallback_t) GetProcAddress(bmsw_, "BmswClientUpdateCallback");
 
-        // Switch library to specific test API
-        BmswExperimentalProfile(T_NOTIF_SPICE);
-
+        // Load config
+        BmswConfigInit("prop/linux.json");
+        //BmswExperimentalForceProfile("notif_spice");
+    }
+    if (bmsw_)
+    {
+        // Sync config
+        wrt_ = BmswClientFormatPeriodWRT(nullptr); //_INFO: wrt affects reported latency (1:100ns)
+        fpc_ = BmswClientFormatPeriodFPC(nullptr);
         return;
     }
     log_fatal("audio::pipewire", "Library not found: '{}'", (MODULE_PATH / "bmsound-wine.dll").string());
@@ -195,16 +190,11 @@ HRESULT PipewireBackend::on_get_buffer_size(uint32_t *buffer_frames) noexcept
     static int iterc = -1;
     if (iterc == -1)
     {
-        log_info("audio::pipewire", "{}, frames: {} FIRST TIME", __FUNCTION__, *buffer_frames);
-    }
-    iterc++;
-    if (iterc > 999999)
-    {
-        log_info("audio::pipewire", "on_get_buffer({}), frames: {}", iterc, *buffer_frames);
+        log_info("audio::pipewire", "{}, frames: {} (INITIAL HIT)", __FUNCTION__, fpc_);
         iterc = 0;
     }
 
-    *buffer_frames = 411;
+    *buffer_frames = fpc_;
 
     return S_OK;
 }
@@ -214,12 +204,12 @@ HRESULT PipewireBackend::on_get_buffer(uint32_t num_frames_requested, BYTE **ppD
     static int iterc = -1;
     if (iterc == -1)
     {
-        log_info("audio::pipewire", "{}, frames: {} FIRST TIME", __FUNCTION__, num_frames_requested);
+        log_info("audio::pipewire", "{}, frames: {} (INITIAL HIT)", __FUNCTION__, num_frames_requested);
     }
     iterc++;
     if (iterc > 999999)
     {
-        log_info("audio::pipewire", "on_get_buffer({}), frames: {}", iterc, num_frames_requested);
+        log_info("audio::pipewire", "on_get_buffer, frames: {} (HIT {})", num_frames_requested, iterc);
         iterc = 0;
     }
 
@@ -233,12 +223,7 @@ HRESULT PipewireBackend::on_release_buffer(uint32_t num_frames_written, DWORD dw
     static int iterc = -1;
     if (iterc == -1)
     {
-        log_info("audio::pipewire", "{}, frames: {} FIRST TIME", __FUNCTION__, num_frames_written);
-    }
-    iterc++;
-    if (iterc > 999999)
-    {
-        log_info("audio::pipewire", "on_release_buffer({}), frames: {}", iterc, num_frames_written);
+        log_info("audio::pipewire", "{}, frames: {} (INITIAL HIT)", __FUNCTION__, num_frames_written);
         iterc = 0;
     }
 
@@ -270,7 +255,7 @@ const WAVEFORMATEXTENSIBLE &PipewireBackend::format() const noexcept
 HRESULT PipewireBackend::on_get_stream_latency(REFERENCE_TIME *latency) noexcept
 {
     log_info("audio::pipewire", "{}", __FUNCTION__);
-    if (client_) *latency = BmswClientWasapiPeriod(client_);
+    *latency = BmswClientFormatPeriodWRT(client_);
 
     return S_OK;
 }

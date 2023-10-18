@@ -26,6 +26,8 @@ public:
     HRESULT on_release_buffer(uint32_t num_frames_written, DWORD dwFlags) override;
 
 private:
+    int fpc_;
+    REFERENCE_TIME wrt_;
     const WAVEFORMATEXTENSIBLE &format_;
     void *client_;
 
