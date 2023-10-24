@@ -965,7 +965,7 @@ static void graphics_d3d9_ldj_on_present(IDirect3DDevice9 *wrapped_device) {
     if (SUB_SWAP_CHAIN != nullptr) {
         wintouchemu::update();
 
-        if (GRAPHICS_WINDOWED) {
+        if (GRAPHICS_WINDOWED || SUBSCREEN_FORCE_REDRAW) {
             SUB_SWAP_CHAIN->Present(nullptr, nullptr, nullptr, nullptr, 0);
         }
     }

@@ -70,6 +70,7 @@ namespace launcher {
             spice2x_SDVXDigitalKnobSensitivity,
             spice2x_SDVXAsioDriver,
             spice2x_SDVXSubPos,
+            spice2x_SDVXSubRedraw,
             LoadDDRModule,
             DDR43Mode,
             LoadPopnMusicModule,

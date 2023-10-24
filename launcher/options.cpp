@@ -548,6 +548,16 @@ static const std::vector<OptionDefinition> OPTION_DEFINITIONS = {
         .elements = {{"top", ""}, {"center", ""}, {"bottom", ""}},
     },
     {
+        // spice2x_SDVXSubRedraw
+        .title = "SDVX Subscreen Force Redraw",
+        .name = "sp2x-sdvxsubredraw",
+        .desc = "Check if second monitor for subscreen doesn't update every frame; "
+            "forces subscreen to redraw every frame, only needed for newer EG.",
+        .type = OptionType::Bool,
+        .game_name = "Sound Voltex",
+        .category = "Game Options",
+    },
+    {
         .title = "Force Load DDR Module",
         .name = "ddr",
         .desc = "Manually enable Dance Dance Revolution module",

@@ -33,6 +33,8 @@ extern std::optional<std::string> GRAPHICS_WINDOW_SIZE;
 extern std::optional<std::string> GRAPHICS_WINDOW_POS;
 extern bool GRAPHICS_WINDOW_ALWAYS_ON_TOP;
 
+extern bool SUBSCREEN_FORCE_REDRAW;
+
 // settings
 extern std::string GRAPHICS_DEVICEID;
 extern std::string GRAPHICS_SCREENSHOT_DIR;
