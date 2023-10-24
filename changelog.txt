@@ -1,3 +1,7 @@
+09/29/2023 [spice2x]
+    Fix subscreen not updating in certain versions of EG.
+    Detect long paths and log a warning message.
+
 06/08/2023 [spice2x]
     Improved touch support for Jubeat and Reflec Beat.
 

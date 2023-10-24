@@ -374,6 +374,9 @@ int main_implementation(int argc, char *argv[]) {
             games::sdvx::OVERLAY_POS = games::sdvx::SDVX_OVERLAY_MIDDLE;
         }
     }
+    if (options[launcher::Options::spice2x_SDVXSubRedraw].value_bool()) {
+        SUBSCREEN_FORCE_REDRAW = true;
+    }
     if (options[launcher::Options::LoadIIDXModule].value_bool()) {
         attach_iidx = true;
     }

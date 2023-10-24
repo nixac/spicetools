@@ -1,6 +1,6 @@
 FROM archlinux:base
 
-RUN pacman --noconfirm -Sy gettext \
+RUN pacman --noconfirm -Syu gettext \
     git \
     bash \
     zip \
